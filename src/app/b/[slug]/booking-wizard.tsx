@@ -1,0 +1,161 @@
+"use client";
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { getAvailableSlots, createPublicBooking } from "./actions";
+import { computeDeposit, formatCents } from "@/lib/utils";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Textarea } from "@/components/ui";
+
+type Service = {
+  id: string; name: string; description: string | null; category: string;
+  price_cents: number; duration_minutes: number;
+  deposit_required: boolean; deposit_type: "fixed" | "percent"; deposit_value: number;
+};
+
+export function BookingWizard({ slug, services, stripeConnected, cancellationPolicy }: {
+  slug: string; services: Service[]; stripeConnected: boolean; cancellationPolicy: string | null;
+}) {
+  const router = useRouter();
+  const [step, setStep] = React.useState(1);
+  const [service, setService] = React.useState<Service | null>(null);
+  const [date, setDate] = React.useState("");
+  const [slots, setSlots] = React.useState<string[]>([]);
+  const [tz, setTz] = React.useState("Europe/Paris");
+  const [slot, setSlot] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const deposit = service ? computeDeposit(service) : 0;
+  const depositActive = deposit > 0 && stripeConnected;
+
+  async function loadSlots(d: string, s: Service) {
+    setLoading(true); setError(null); setSlots([]); setSlot(null);
+    const res = await getAvailableSlots(slug, s.id, d);
+    setLoading(false);
+    if ("error" in res && res.error) { setError(res.error); return; }
+    const r = res as { slots: string[]; timezone: string };
+    setSlots(r.slots); setTz(r.timezone);
+  }
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!service || !slot) return;
+    setLoading(true); setError(null);
+    const fd = new FormData(e.currentTarget);
+    const res = await createPublicBooking(slug, {
+      service_id: service.id,
+      starts_at: slot,
+      customer_name: fd.get("customer_name"),
+      customer_email: fd.get("customer_email"),
+      customer_phone: fd.get("customer_phone") ?? "",
+      vehicle_make: fd.get("vehicle_make"),
+      vehicle_model: fd.get("vehicle_model"),
+      vehicle_year: fd.get("vehicle_year") || "",
+      vehicle_size: fd.get("vehicle_size") || "other",
+      notes: fd.get("notes") ?? "",
+    });
+    setLoading(false);
+    if (res.error) { setError(res.error); return; }
+    if ("checkoutUrl" in res && res.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
+    router.push(`/b/${slug}/confirmed/${res.bookingId}`);
+  }
+
+  const fmtTime = (iso: string) =>
+    new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: tz }).format(new Date(iso));
+
+  return (
+    <div className="space-y-4">
+      {/* Step 1: service */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">1. Choisis ton service</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {services.length === 0 && <p className="text-sm text-muted-foreground">Aucun service disponible pour le moment.</p>}
+          {services.map((s) => (
+            <button key={s.id} type="button"
+              onClick={() => { setService(s); setStep(2); if (date) loadSlots(date, s); }}
+              className={`w-full rounded-md border p-3 text-left transition-colors hover:bg-accent ${service?.id === s.id ? "border-primary ring-1 ring-primary" : ""}`}>
+              <div className="flex items-center justify-between">
+                <p className="font-medium">{s.name}</p>
+                <p className="font-semibold">{formatCents(s.price_cents)}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {s.duration_minutes} min
+                {s.deposit_required && stripeConnected && (
+                  <> · acompte {s.deposit_type === "fixed" ? formatCents(s.deposit_value) : `${s.deposit_value}%`}</>
+                )}
+              </p>
+              {s.description && <p className="mt-1 text-xs text-muted-foreground">{s.description}</p>}
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Step 2: date + slot */}
+      {step >= 2 && service && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">2. Choisis ton créneau</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <Input type="date" value={date} min={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => { setDate(e.target.value); if (e.target.value) loadSlots(e.target.value, service); }} />
+            {loading && <p className="text-sm text-muted-foreground">Recherche des créneaux…</p>}
+            {!loading && date && slots.length === 0 && (
+              <p className="text-sm text-muted-foreground">Aucun créneau disponible ce jour-là.</p>
+            )}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {slots.map((s) => (
+                <Button key={s} type="button" size="sm"
+                  variant={slot === s ? "default" : "outline"}
+                  onClick={() => { setSlot(s); setStep(3); }}>
+                  {fmtTime(s)}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3: infos */}
+      {step >= 3 && service && slot && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">3. Tes infos</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={submit} className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5"><Label>Nom complet</Label><Input name="customer_name" required /></div>
+                <div className="space-y-1.5"><Label>Email</Label><Input name="customer_email" type="email" required /></div>
+              </div>
+              <div className="space-y-1.5"><Label>Téléphone</Label><Input name="customer_phone" /></div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5"><Label>Marque</Label><Input name="vehicle_make" required placeholder="BMW" /></div>
+                <div className="space-y-1.5"><Label>Modèle</Label><Input name="vehicle_model" required placeholder="M3" /></div>
+                <div className="space-y-1.5"><Label>Année</Label><Input name="vehicle_year" type="number" min={1950} max={2035} /></div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Gabarit</Label>
+                <Select name="vehicle_size" defaultValue="sedan">
+                  <option value="compact">Citadine</option><option value="sedan">Berline</option>
+                  <option value="suv">SUV</option><option value="truck">Pickup</option>
+                  <option value="van">Van</option><option value="other">Autre</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5"><Label>Notes (optionnel)</Label>
+                <Textarea name="notes" placeholder="État du véhicule, demandes particulières…" /></div>
+
+              <div className="rounded-md bg-muted p-3 text-sm">
+                <p><strong>{service.name}</strong> — {formatCents(service.price_cents)}</p>
+                {depositActive
+                  ? <p>Acompte à régler maintenant : <strong>{formatCents(deposit)}</strong> (reste {formatCents(service.price_cents - deposit)} sur place)</p>
+                  : <p>Paiement sur place.</p>}
+                {cancellationPolicy && <p className="mt-1 text-xs text-muted-foreground">{cancellationPolicy}</p>}
+              </div>
+
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "…" : depositActive ? `Réserver et payer l'acompte (${formatCents(deposit)})` : "Confirmer la réservation"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
