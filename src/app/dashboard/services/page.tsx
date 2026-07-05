@@ -1,5 +1,5 @@
 import { requireBusiness } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState } from "@/components/ui";
 import { ServiceForm, ServiceRowActions } from "./service-form";
@@ -11,30 +11,35 @@ const catLabels: Record<string, string> = {
 
 export default async function ServicesPage() {
   const ctx = await requireBusiness();
-  const supabase = await createClient();
-  const { data: services } = await supabase.from("services")
-    .select("*").eq("business_id", ctx.business.id).order("created_at");
+  const services = await db.service.findMany({
+    where: { businessId: ctx.business.id }, orderBy: { createdAt: "asc" },
+  });
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       <div className="space-y-3">
         <h1 className="text-xl font-bold">Services</h1>
-        {(services ?? []).length === 0 ? (
+        {services.length === 0 ? (
           <EmptyState title="Aucun service" description="Ajoute ton premier service avec le formulaire ci-contre." />
         ) : (
-          services!.map((s) => (
-            <Card key={s.id} className={s.is_active ? "" : "opacity-60"}>
+          services.map((s) => (
+            <Card key={s.id} className={s.isActive ? "" : "opacity-60"}>
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
-                  <p className="font-medium">{s.name} {!s.is_active && <Badge variant="muted">Inactif</Badge>}</p>
+                  <p className="font-medium">{s.name} {!s.isActive && <Badge variant="muted">Inactif</Badge>}</p>
                   <p className="text-sm text-muted-foreground">
-                    {catLabels[s.category]} · {formatCents(s.price_cents)} · {s.duration_minutes} min
-                    {s.deposit_required && (
-                      <> · acompte {s.deposit_type === "fixed" ? formatCents(s.deposit_value) : `${s.deposit_value}%`}</>
+                    {catLabels[s.category]} · {formatCents(s.priceCents)} · {s.durationMinutes} min
+                    {s.depositRequired && (
+                      <> · acompte {s.depositType === "fixed" ? formatCents(s.depositValue) : `${s.depositValue}%`}</>
                     )}
                   </p>
                 </div>
-                <ServiceRowActions service={s} />
+                <ServiceRowActions service={{
+                  id: s.id, name: s.name, description: s.description, category: s.category,
+                  price_cents: s.priceCents, duration_minutes: s.durationMinutes,
+                  deposit_required: s.depositRequired, deposit_type: s.depositType,
+                  deposit_value: s.depositValue, is_active: s.isActive,
+                }} />
               </CardContent>
             </Card>
           ))

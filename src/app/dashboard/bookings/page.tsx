@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireBusiness } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { bookingStatusSchema } from "@/lib/validators";
 import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, EmptyState, StatusBadge } from "@/components/ui";
 
@@ -12,15 +13,15 @@ const filters = [
 export default async function BookingsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status = "all" } = await searchParams;
   const ctx = await requireBusiness();
-  const supabase = await createClient();
 
-  let query = supabase.from("bookings")
-    .select("*, services(name), customers(full_name), vehicles(make, model)")
-    .eq("business_id", ctx.business.id).order("starts_at", { ascending: false }).limit(100);
-  if (status !== "all") query = query.eq("status", status);
-  const [{ data: bookings }, { data: settings }] = await Promise.all([
-    query,
-    supabase.from("business_settings").select("timezone").eq("business_id", ctx.business.id).maybeSingle(),
+  const statusFilter = bookingStatusSchema.safeParse(status);
+  const [bookings, settings] = await Promise.all([
+    db.booking.findMany({
+      where: { businessId: ctx.business.id, ...(statusFilter.success ? { status: statusFilter.data } : {}) },
+      include: { service: true, customer: true, vehicle: true },
+      orderBy: { startsAt: "desc" }, take: 100,
+    }),
+    db.businessSettings.findUnique({ where: { businessId: ctx.business.id }, select: { timezone: true } }),
   ]);
   const tz = settings?.timezone ?? "Europe/Paris";
 
@@ -34,28 +35,26 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
           </Link>
         ))}
       </div>
-      {(bookings ?? []).length === 0 ? (
+      {bookings.length === 0 ? (
         <EmptyState title="Aucune réservation" description="Partage ton lien public pour en recevoir." />
       ) : (
         <div className="space-y-2">
-          {bookings!.map((b) => (
+          {bookings.map((b) => (
             <Link key={b.id} href={`/dashboard/bookings/${b.id}`} className="block">
               <Card className="hover:bg-accent">
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                   <div>
-                    <p className="font-medium">
-                      {(b.customers as { full_name?: string } | null)?.full_name} — {(b.services as { name?: string } | null)?.name}
-                    </p>
+                    <p className="font-medium">{b.customer.fullName} — {b.service.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {formatDateTime(b.starts_at, tz)}
-                      {b.vehicles ? ` · ${(b.vehicles as { make?: string; model?: string }).make} ${(b.vehicles as { make?: string; model?: string }).model}` : ""}
-                      {" · "}{formatCents(b.total_price_cents)}
+                      {formatDateTime(b.startsAt.toISOString(), tz)}
+                      {b.vehicle ? ` · ${b.vehicle.make} ${b.vehicle.model}` : ""}
+                      {" · "}{formatCents(b.totalPriceCents)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {b.deposit_amount_cents > 0 && (
-                      <Badge variant={b.deposit_paid ? "success" : "warning"}>
-                        Acompte {b.deposit_paid ? "payé" : "en attente"}
+                    {b.depositAmountCents > 0 && (
+                      <Badge variant={b.depositPaid ? "success" : "warning"}>
+                        Acompte {b.depositPaid ? "payé" : "en attente"}
                       </Badge>
                     )}
                     <StatusBadge status={b.status} />

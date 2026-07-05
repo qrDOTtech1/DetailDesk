@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 
 export type EmailType =
   | "welcome"
@@ -22,7 +22,6 @@ type SendArgs = {
  * NEVER throws — a failed email must not break a booking/payment flow.
  */
 export async function sendEmail({ type, to, subject, html, businessId, bookingId }: SendArgs) {
-  const supabase = createAdminClient();
   let resendId: string | null = null;
   let status = "sent";
 
@@ -49,13 +48,11 @@ export async function sendEmail({ type, to, subject, html, businessId, bookingId
   }
 
   try {
-    await supabase.from("email_logs").insert({
-      type,
-      recipient: to,
-      status,
-      resend_id: resendId,
-      business_id: businessId ?? null,
-      booking_id: bookingId ?? null,
+    await db.emailLog.create({
+      data: {
+        type, recipient: to, status,
+        resendId, businessId: businessId ?? null, bookingId: bookingId ?? null,
+      },
     });
   } catch (e) {
     console.error("[mailer] email_logs insert failed", e);

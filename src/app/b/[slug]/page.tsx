@@ -1,27 +1,35 @@
 import { notFound } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 import { BookingWizard } from "./booking-wizard";
 
 export default async function PublicBookingPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const supabase = createAdminClient();
 
-  const { data: business } = await supabase.from("businesses")
-    .select("id, name, slug, email, phone, address, logo_url, cancellation_policy, stripe_connected, business_type")
-    .eq("slug", slug).eq("is_active", true).maybeSingle();
+  const business = await db.business.findFirst({
+    where: { slug, isActive: true },
+    select: {
+      id: true, name: true, slug: true, email: true, phone: true, address: true,
+      logoUrl: true, cancellationPolicy: true, stripeConnected: true, businessType: true,
+    },
+  });
   if (!business) notFound();
 
-  const { data: services } = await supabase.from("services")
-    .select("id, name, description, category, price_cents, duration_minutes, deposit_required, deposit_type, deposit_value")
-    .eq("business_id", business.id).eq("is_active", true).order("price_cents");
+  const services = await db.service.findMany({
+    where: { businessId: business.id, isActive: true },
+    orderBy: { priceCents: "asc" },
+    select: {
+      id: true, name: true, description: true, category: true, priceCents: true,
+      durationMinutes: true, depositRequired: true, depositType: true, depositValue: true,
+    },
+  });
 
   return (
     <main className="min-h-screen bg-muted/40">
       <div className="mx-auto max-w-xl px-4 py-8">
         <header className="mb-6 text-center">
-          {business.logo_url && (
+          {business.logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={business.logo_url} alt={business.name} className="mx-auto mb-3 h-16 w-16 rounded-full object-cover" />
+            <img src={business.logoUrl} alt={business.name} className="mx-auto mb-3 h-16 w-16 rounded-full object-cover" />
           )}
           <h1 className="text-2xl font-bold">{business.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -30,9 +38,13 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
         </header>
         <BookingWizard
           slug={business.slug}
-          services={services ?? []}
-          stripeConnected={business.stripe_connected}
-          cancellationPolicy={business.cancellation_policy}
+          services={services.map((s) => ({
+            id: s.id, name: s.name, description: s.description, category: s.category,
+            price_cents: s.priceCents, duration_minutes: s.durationMinutes,
+            deposit_required: s.depositRequired, deposit_type: s.depositType, deposit_value: s.depositValue,
+          }))}
+          stripeConnected={business.stripeConnected}
+          cancellationPolicy={business.cancellationPolicy}
         />
         <p className="mt-8 text-center text-xs text-muted-foreground">Propulsé par DetailDesk</p>
       </div>

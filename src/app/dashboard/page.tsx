@@ -1,37 +1,33 @@
 import Link from "next/link";
 import { requireBusiness } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 import { appUrl } from "@/lib/stripe";
 import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, CopyButton, EmptyState, StatusBadge } from "@/components/ui";
 
 export default async function DashboardPage() {
   const ctx = await requireBusiness();
-  const supabase = await createClient();
   const bid = ctx.business.id;
 
-  const [upcoming, recentCustomers, payments, services, settings] = await Promise.all([
-    supabase.from("bookings")
-      .select("id, starts_at, status, total_price_cents, services(name), customers(full_name)")
-      .eq("business_id", bid).gte("starts_at", new Date().toISOString())
-      .in("status", ["pending", "confirmed"]).order("starts_at").limit(5),
-    supabase.from("customers").select("id, full_name, email, created_at")
-      .eq("business_id", bid).order("created_at", { ascending: false }).limit(5),
-    supabase.from("payments").select("amount_cents").eq("business_id", bid).eq("status", "succeeded"),
-    supabase.from("bookings").select("service_id, services(name)").eq("business_id", bid).limit(500),
-    supabase.from("business_settings").select("timezone").eq("business_id", bid).maybeSingle(),
+  const [upcoming, recentCustomers, payments, serviceCounts, settings] = await Promise.all([
+    db.booking.findMany({
+      where: { businessId: bid, startsAt: { gte: new Date() }, status: { in: ["pending", "confirmed"] } },
+      include: { service: true, customer: true },
+      orderBy: { startsAt: "asc" }, take: 5,
+    }),
+    db.customer.findMany({ where: { businessId: bid }, orderBy: { createdAt: "desc" }, take: 5 }),
+    db.payment.findMany({ where: { businessId: bid, status: "succeeded" }, select: { amountCents: true } }),
+    db.booking.groupBy({ by: ["serviceId"], where: { businessId: bid }, _count: { serviceId: true } }),
+    db.businessSettings.findUnique({ where: { businessId: bid }, select: { timezone: true } }),
   ]);
 
-  const tz = settings.data?.timezone ?? "Europe/Paris";
-  const totalDeposits = (payments.data ?? []).reduce((s, p) => s + p.amount_cents, 0);
-  const counts = new Map<string, { name: string; n: number }>();
-  for (const b of services.data ?? []) {
-    const name = (b.services as { name?: string } | null)?.name ?? "?";
-    const cur = counts.get(b.service_id) ?? { name, n: 0 };
-    cur.n++;
-    counts.set(b.service_id, cur);
-  }
-  const popular = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 3);
+  const tz = settings?.timezone ?? "Europe/Paris";
+  const totalDeposits = payments.reduce((s, p) => s + p.amountCents, 0);
+  const sortedCounts = [...serviceCounts].sort((a, b) => b._count.serviceId - a._count.serviceId).slice(0, 3);
+  const services = await db.service.findMany({ where: { id: { in: sortedCounts.map((c) => c.serviceId) } } });
+  const popular = sortedCounts.map((c) => ({
+    name: services.find((s) => s.id === c.serviceId)?.name ?? "?", n: c._count.serviceId,
+  }));
   const publicUrl = appUrl(`/b/${ctx.business.slug}`);
 
   return (
@@ -62,7 +58,7 @@ export default async function DashboardPage() {
         <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Acomptes encaissés</CardTitle></CardHeader>
           <CardContent><p className="text-2xl font-bold">{formatCents(totalDeposits)}</p></CardContent></Card>
         <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">RDV à venir</CardTitle></CardHeader>
-          <CardContent><p className="text-2xl font-bold">{upcoming.data?.length ?? 0}</p></CardContent></Card>
+          <CardContent><p className="text-2xl font-bold">{upcoming.length}</p></CardContent></Card>
         <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Services populaires</CardTitle></CardHeader>
           <CardContent className="space-x-1">
             {popular.length === 0 ? <p className="text-sm text-muted-foreground">—</p>
@@ -77,15 +73,15 @@ export default async function DashboardPage() {
             <Link href="/dashboard/bookings"><Button variant="ghost" size="sm">Tout voir →</Button></Link>
           </CardHeader>
           <CardContent className="space-y-2">
-            {(upcoming.data ?? []).length === 0 ? (
+            {upcoming.length === 0 ? (
               <EmptyState title="Aucune réservation à venir"
                 description="Partage ton lien public pour recevoir tes premières réservations." />
-            ) : upcoming.data!.map((b) => (
+            ) : upcoming.map((b) => (
               <Link key={b.id} href={`/dashboard/bookings/${b.id}`}
                 className="flex items-center justify-between rounded-md border p-3 hover:bg-accent">
                 <div>
-                  <p className="text-sm font-medium">{(b.customers as { full_name?: string } | null)?.full_name} — {(b.services as { name?: string } | null)?.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatDateTime(b.starts_at, tz)}</p>
+                  <p className="text-sm font-medium">{b.customer.fullName} — {b.service.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatDateTime(b.startsAt.toISOString(), tz)}</p>
                 </div>
                 <StatusBadge status={b.status} />
               </Link>
@@ -99,13 +95,13 @@ export default async function DashboardPage() {
             <Link href="/dashboard/customers"><Button variant="ghost" size="sm">Tout voir →</Button></Link>
           </CardHeader>
           <CardContent className="space-y-2">
-            {(recentCustomers.data ?? []).length === 0 ? (
+            {recentCustomers.length === 0 ? (
               <EmptyState title="Aucun client pour le moment"
                 action={<Link href="/dashboard/customers"><Button size="sm">Ajouter un client</Button></Link>} />
-            ) : recentCustomers.data!.map((c) => (
+            ) : recentCustomers.map((c) => (
               <Link key={c.id} href={`/dashboard/customers/${c.id}`}
                 className="flex items-center justify-between rounded-md border p-3 hover:bg-accent">
-                <p className="text-sm font-medium">{c.full_name}</p>
+                <p className="text-sm font-medium">{c.fullName}</p>
                 <p className="text-xs text-muted-foreground">{c.email ?? ""}</p>
               </Link>
             ))}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe, appUrl } from "@/lib/stripe";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/mailer";
 import { bookingConfirmationEmail, paymentConfirmationEmail } from "@/lib/emails";
 
@@ -24,14 +24,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid signature" }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
-
   switch (event.type) {
     case "account.updated": {
       const account = event.data.object as Stripe.Account;
-      await supabase.from("businesses")
-        .update({ stripe_connected: Boolean(account.charges_enabled) })
-        .eq("stripe_account_id", account.id);
+      await db.business.updateMany({
+        where: { stripeAccountId: account.id },
+        data: { stripeConnected: Boolean(account.charges_enabled) },
+      });
       break;
     }
 
@@ -41,51 +40,56 @@ export async function POST(request: Request) {
       const businessId = session.metadata?.business_id;
       if (!bookingId || !businessId) break;
 
-      await supabase.from("payments").update({
-        status: "succeeded",
-        stripe_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
-      }).eq("stripe_checkout_session_id", session.id).eq("business_id", businessId);
+      await db.payment.updateMany({
+        where: { stripeCheckoutSessionId: session.id, businessId },
+        data: {
+          status: "succeeded",
+          stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        },
+      });
 
-      const { data: booking } = await supabase.from("bookings")
-        .select("*, services(name), customers(full_name, email), businesses(name)")
-        .eq("id", bookingId).eq("business_id", businessId).maybeSingle();
+      const booking = await db.booking.findFirst({
+        where: { id: bookingId, businessId },
+        include: { service: true, customer: true, business: true },
+      });
       if (!booking) break;
 
-      await supabase.from("bookings")
-        .update({ deposit_paid: true, status: booking.status === "pending" ? "confirmed" : booking.status })
-        .eq("id", bookingId).eq("business_id", businessId);
+      await db.booking.update({
+        where: { id: bookingId },
+        data: { depositPaid: true, status: booking.status === "pending" ? "confirmed" : booking.status },
+      });
 
-      const customer = booking.customers as { full_name?: string; email?: string | null } | null;
-      if (customer?.email) {
-        const { data: settings } = await supabase.from("business_settings")
-          .select("timezone").eq("business_id", businessId).maybeSingle();
+      if (booking.customer.email) {
+        const settings = await db.businessSettings.findUnique({ where: { businessId }, select: { timezone: true } });
         const info = {
-          businessName: (booking.businesses as { name?: string } | null)?.name ?? "",
-          customerName: customer.full_name ?? "",
-          serviceName: (booking.services as { name?: string } | null)?.name ?? "Service",
-          startsAt: booking.starts_at,
+          businessName: booking.business.name,
+          customerName: booking.customer.fullName,
+          serviceName: booking.service.name,
+          startsAt: booking.startsAt.toISOString(),
           timezone: settings?.timezone ?? "Europe/Paris",
-          totalCents: booking.total_price_cents,
-          depositCents: booking.deposit_amount_cents,
-          cancelUrl: appUrl(`/cancel/${booking.public_cancel_token}`),
+          totalCents: booking.totalPriceCents,
+          depositCents: booking.depositAmountCents,
+          cancelUrl: appUrl(`/cancel/${booking.publicCancelToken}`),
         };
-        await sendEmail({ type: "payment_confirmation", to: customer.email, ...paymentConfirmationEmail(info), businessId, bookingId });
-        await sendEmail({ type: "booking_confirmation", to: customer.email, ...bookingConfirmationEmail(info), businessId, bookingId });
+        await sendEmail({ type: "payment_confirmation", to: booking.customer.email, ...paymentConfirmationEmail(info), businessId, bookingId });
+        await sendEmail({ type: "booking_confirmation", to: booking.customer.email, ...bookingConfirmationEmail(info), businessId, bookingId });
       }
       break;
     }
 
     case "checkout.session.expired": {
       const session = event.data.object as Stripe.Checkout.Session;
-      await supabase.from("payments").update({ status: "cancelled" })
-        .eq("stripe_checkout_session_id", session.id);
+      await db.payment.updateMany({
+        where: { stripeCheckoutSessionId: session.id }, data: { status: "cancelled" },
+      });
       break;
     }
 
     case "payment_intent.payment_failed": {
       const pi = event.data.object as Stripe.PaymentIntent;
-      await supabase.from("payments").update({ status: "failed" })
-        .eq("stripe_payment_intent_id", pi.id);
+      await db.payment.updateMany({
+        where: { stripePaymentIntentId: pi.id }, data: { status: "failed" },
+      });
       break;
     }
   }

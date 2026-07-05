@@ -1,6 +1,6 @@
 "use server";
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 import { computeSlots } from "@/lib/slots";
 import { computeDeposit } from "@/lib/utils";
 import { publicBookingSchema } from "@/lib/validators";
@@ -10,18 +10,19 @@ import { bookingConfirmationEmail } from "@/lib/emails";
 import { addMinutes } from "date-fns";
 
 /**
- * Public booking flow. Runs with the service-role client because the end
- * customer has no account. Every query is scoped to the business resolved
- * from the public slug — never from client-provided business ids.
+ * Public booking flow. The end customer has no account, so every query here
+ * is scoped explicitly by the business resolved from the public slug —
+ * never from a client-provided business id.
  */
 
 async function getBusinessBySlug(slug: string) {
-  const supabase = createAdminClient();
-  const { data: business } = await supabase
-    .from("businesses")
-    .select("id, name, slug, email, phone, address, logo_url, cancellation_policy, stripe_connected, stripe_account_id, is_active")
-    .eq("slug", slug).eq("is_active", true).maybeSingle();
-  return business;
+  return db.business.findFirst({
+    where: { slug, isActive: true },
+    select: {
+      id: true, name: true, slug: true, email: true, phone: true, address: true,
+      logoUrl: true, cancellationPolicy: true, stripeConnected: true, stripeAccountId: true,
+    },
+  });
 }
 
 /** Available slot start times (ISO strings, UTC) for a service on a date. */
@@ -30,39 +31,47 @@ export async function getAvailableSlots(slug: string, serviceId: string, date: s
   const business = await getBusinessBySlug(slug);
   if (!business) return { error: "Business introuvable." };
 
-  const supabase = createAdminClient();
-  const [{ data: service }, { data: settings }, { data: rules }] = await Promise.all([
-    supabase.from("services").select("duration_minutes")
-      .eq("id", serviceId).eq("business_id", business.id).eq("is_active", true).maybeSingle(),
-    supabase.from("business_settings").select("*").eq("business_id", business.id).maybeSingle(),
-    supabase.from("availability_rules").select("weekday, start_time, end_time")
-      .eq("business_id", business.id).eq("is_active", true),
+  const [service, settings, rules] = await Promise.all([
+    db.service.findFirst({
+      where: { id: serviceId, businessId: business.id, isActive: true },
+      select: { durationMinutes: true },
+    }),
+    db.businessSettings.findUnique({ where: { businessId: business.id } }),
+    db.availabilityRule.findMany({
+      where: { businessId: business.id, isActive: true },
+      select: { weekday: true, startTime: true, endTime: true },
+    }),
   ]);
   if (!service) return { error: "Service introuvable." };
 
   const tz = settings?.timezone ?? "Europe/Paris";
   const dayStart = new Date(`${date}T00:00:00Z`);
-  const windowStart = new Date(dayStart.getTime() - 24 * 3600_000).toISOString();
-  const windowEnd = new Date(dayStart.getTime() + 48 * 3600_000).toISOString();
+  const windowStart = new Date(dayStart.getTime() - 24 * 3600_000);
+  const windowEnd = new Date(dayStart.getTime() + 48 * 3600_000);
 
-  const [{ data: bookings }, { data: blocked }] = await Promise.all([
-    supabase.from("bookings").select("starts_at, ends_at")
-      .eq("business_id", business.id).in("status", ["pending", "confirmed"])
-      .gte("ends_at", windowStart).lte("starts_at", windowEnd),
-    supabase.from("blocked_slots").select("starts_at, ends_at")
-      .eq("business_id", business.id).gte("ends_at", windowStart).lte("starts_at", windowEnd),
+  const [bookings, blocked] = await Promise.all([
+    db.booking.findMany({
+      where: {
+        businessId: business.id, status: { in: ["pending", "confirmed"] },
+        endsAt: { gte: windowStart }, startsAt: { lte: windowEnd },
+      },
+      select: { startsAt: true, endsAt: true },
+    }),
+    db.blockedSlot.findMany({
+      where: { businessId: business.id, endsAt: { gte: windowStart }, startsAt: { lte: windowEnd } },
+      select: { startsAt: true, endsAt: true },
+    }),
   ]);
 
-  const busy = [...(bookings ?? []), ...(blocked ?? [])].map((x) => ({
-    start: new Date(x.starts_at), end: new Date(x.ends_at),
-  }));
+  const busy = [...bookings, ...blocked].map((x) => ({ start: x.startsAt, end: x.endsAt }));
 
   const slots = computeSlots({
     date, timezone: tz,
-    durationMinutes: service.duration_minutes,
-    bufferMinutes: settings?.buffer_minutes ?? 15,
-    noticeHours: settings?.booking_notice_hours ?? 12,
-    rules: rules ?? [], busy,
+    durationMinutes: service.durationMinutes,
+    bufferMinutes: settings?.bufferMinutes ?? 15,
+    noticeHours: settings?.bookingNoticeHours ?? 12,
+    rules: rules.map((r) => ({ weekday: r.weekday, start_time: r.startTime, end_time: r.endTime })),
+    busy,
   });
   return { slots: slots.map((s) => s.toISOString()), timezone: tz };
 }
@@ -76,15 +85,14 @@ export async function createPublicBooking(slug: string, input: unknown) {
   const business = await getBusinessBySlug(slug);
   if (!business) return { error: "Business introuvable." };
 
-  const supabase = createAdminClient();
-  const { data: service } = await supabase.from("services").select("*")
-    .eq("id", d.service_id).eq("business_id", business.id).eq("is_active", true).maybeSingle();
+  const service = await db.service.findFirst({
+    where: { id: d.service_id, businessId: business.id, isActive: true },
+  });
   if (!service) return { error: "Service introuvable." };
 
   // Re-validate the requested slot server-side
   const starts = new Date(d.starts_at);
-  const { data: settings } = await supabase.from("business_settings").select("*")
-    .eq("business_id", business.id).maybeSingle();
+  const settings = await db.businessSettings.findUnique({ where: { businessId: business.id } });
   const tz = settings?.timezone ?? "Europe/Paris";
   const dateStr = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
@@ -96,47 +104,54 @@ export async function createPublicBooking(slug: string, input: unknown) {
   );
   if (!ok) return { error: "Ce créneau n'est plus disponible. Choisis-en un autre." };
 
-  const ends = addMinutes(starts, service.duration_minutes);
-  const deposit = computeDeposit(service);
-  const depositActive = deposit > 0 && business.stripe_connected && business.stripe_account_id;
+  const ends = addMinutes(starts, service.durationMinutes);
+  const deposit = computeDeposit({
+    deposit_required: service.depositRequired, deposit_type: service.depositType,
+    deposit_value: service.depositValue, price_cents: service.priceCents,
+  });
+  const depositActive = deposit > 0 && business.stripeConnected && business.stripeAccountId;
 
   // upsert customer by email within this business
-  let customerId: string;
-  const { data: existing } = await supabase.from("customers").select("id")
-    .eq("business_id", business.id).eq("email", d.customer_email).maybeSingle();
-  if (existing) {
-    customerId = existing.id;
-    await supabase.from("customers").update({
-      full_name: d.customer_name, phone: d.customer_phone || null,
-    }).eq("id", customerId);
-  } else {
-    const { data: created, error } = await supabase.from("customers").insert({
-      business_id: business.id, full_name: d.customer_name,
-      email: d.customer_email, phone: d.customer_phone || null,
-    }).select("id").single();
-    if (error || !created) return { error: "Erreur client." };
-    customerId = created.id;
-  }
+  const existingCustomer = await db.customer.findFirst({
+    where: { businessId: business.id, email: d.customer_email },
+  });
+  const customer = existingCustomer
+    ? await db.customer.update({
+        where: { id: existingCustomer.id },
+        data: { fullName: d.customer_name, phone: d.customer_phone || null },
+      })
+    : await db.customer.create({
+        data: {
+          businessId: business.id, fullName: d.customer_name,
+          email: d.customer_email, phone: d.customer_phone || null,
+        },
+      });
 
-  const { data: vehicle } = await supabase.from("vehicles").insert({
-    business_id: business.id, customer_id: customerId,
-    make: d.vehicle_make, model: d.vehicle_model,
-    year: d.vehicle_year || null, size_category: d.vehicle_size ?? "other",
-  }).select("id").single();
+  const vehicle = await db.vehicle.create({
+    data: {
+      businessId: business.id, customerId: customer.id,
+      make: d.vehicle_make, model: d.vehicle_model,
+      year: d.vehicle_year || null, sizeCategory: d.vehicle_size ?? "other",
+    },
+  });
 
-  const { data: booking, error: bookingErr } = await supabase.from("bookings").insert({
-    business_id: business.id, service_id: service.id,
-    customer_id: customerId, vehicle_id: vehicle?.id ?? null,
-    status: "pending",
-    starts_at: starts.toISOString(), ends_at: ends.toISOString(),
-    total_price_cents: service.price_cents,
-    deposit_amount_cents: depositActive ? deposit : 0,
-    deposit_paid: false,
-    notes: d.notes || null,
-  }).select("id, public_cancel_token").single();
-  if (bookingErr || !booking) return { error: "Erreur lors de la réservation." };
+  const booking = await db.booking.create({
+    data: {
+      businessId: business.id, serviceId: service.id,
+      customerId: customer.id, vehicleId: vehicle.id,
+      status: "pending",
+      startsAt: starts, endsAt: ends,
+      totalPriceCents: service.priceCents,
+      depositAmountCents: depositActive ? deposit : 0,
+      depositPaid: false,
+      notes: d.notes || null,
+    },
+  });
+  await db.bookingStatusHistory.create({
+    data: { businessId: business.id, bookingId: booking.id, oldStatus: null, newStatus: "pending" },
+  });
 
-  const cancelUrl = appUrl(`/cancel/${booking.public_cancel_token}`);
+  const cancelUrl = appUrl(`/cancel/${booking.publicCancelToken}`);
 
   if (depositActive) {
     // Checkout Session on the CONNECTED account (money goes to the pro).
@@ -159,14 +174,16 @@ export async function createPublicBooking(slug: string, input: unknown) {
           success_url: appUrl(`/b/${slug}/confirmed/${booking.id}?paid=1`),
           cancel_url: appUrl(`/b/${slug}/confirmed/${booking.id}?paid=0`),
         },
-        { stripeAccount: business.stripe_account_id! }
+        { stripeAccount: business.stripeAccountId! }
       );
 
-      await supabase.from("payments").insert({
-        business_id: business.id, booking_id: booking.id,
-        stripe_checkout_session_id: session.id,
-        stripe_connected_account_id: business.stripe_account_id,
-        amount_cents: deposit, currency: "eur", status: "pending",
+      await db.payment.create({
+        data: {
+          businessId: business.id, bookingId: booking.id,
+          stripeCheckoutSessionId: session.id,
+          stripeConnectedAccountId: business.stripeAccountId,
+          amountCents: deposit, currency: "eur", status: "pending",
+        },
       });
       return { checkoutUrl: session.url, bookingId: booking.id };
     } catch (e) {
@@ -176,11 +193,11 @@ export async function createPublicBooking(slug: string, input: unknown) {
   }
 
   // no deposit — confirm immediately + send confirmation email
-  await supabase.from("bookings").update({ status: "confirmed" }).eq("id", booking.id);
+  await db.booking.update({ where: { id: booking.id }, data: { status: "confirmed" } });
   const email = bookingConfirmationEmail({
     businessName: business.name, customerName: d.customer_name,
     serviceName: service.name, startsAt: starts.toISOString(), timezone: tz,
-    totalCents: service.price_cents, depositCents: 0, cancelUrl,
+    totalCents: service.priceCents, depositCents: 0, cancelUrl,
   });
   await sendEmail({
     type: "booking_confirmation", to: d.customer_email, ...email,

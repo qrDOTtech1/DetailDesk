@@ -1,13 +1,11 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 import { OnboardingForm } from "./onboarding-form";
 
 export default async function OnboardingPage() {
   const ctx = await requireUser();
-  const supabase = await createClient();
-  const { data: membership } = await supabase
-    .from("business_members").select("id").eq("user_id", ctx.user.id).limit(1).maybeSingle();
+  const membership = await db.businessMember.findFirst({ where: { userId: ctx.user.id } });
   if (membership) redirect("/dashboard");
 
   return (

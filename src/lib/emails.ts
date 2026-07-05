@@ -84,6 +84,18 @@ export function bookingReminderEmail(b: BookingInfo, customMessage?: string | nu
   };
 }
 
+export function passwordResetEmail(resetUrl: string) {
+  return {
+    subject: "Réinitialise ton mot de passe DetailDesk",
+    html: layout(
+      "Réinitialisation du mot de passe",
+      `<p>Tu as demandé à réinitialiser ton mot de passe.</p>
+       <p><a href="${resetUrl}">Clique ici pour choisir un nouveau mot de passe</a> (valable 1 heure).</p>
+       <p>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>`
+    ),
+  };
+}
+
 export function bookingCancelledEmail(b: BookingInfo) {
   return {
     subject: `Réservation annulée — ${b.businessName}`,

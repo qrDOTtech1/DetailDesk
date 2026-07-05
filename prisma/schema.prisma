@@ -1,0 +1,330 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BusinessType {
+  studio
+  mobile
+  both
+}
+
+enum MemberRole {
+  owner
+  staff
+}
+
+enum ServiceCategory {
+  interior
+  exterior
+  polish
+  ceramic
+  restoration
+  other
+}
+
+enum DepositType {
+  fixed
+  percent
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+  no_show
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  cancelled
+  refunded
+}
+
+enum EmailType {
+  welcome
+  booking_confirmation
+  payment_confirmation
+  booking_reminder
+  booking_cancelled
+}
+
+enum SizeCategory {
+  compact
+  sedan
+  suv
+  truck
+  van
+  other
+}
+
+model Profile {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  fullName      String?  @map("full_name")
+  platformRole  String?  @map("platform_role") // "platform_admin" | null
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  memberships       BusinessMember[]
+  statusChangesMade  BookingStatusHistory[]
+  resetTokens        PasswordResetToken[]
+
+  @@map("profiles")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  profileId String   @map("profile_id")
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("password_reset_tokens")
+}
+
+model Business {
+  id                  String   @id @default(uuid())
+  name                String
+  slug                String   @unique
+  email               String
+  phone               String?
+  address             String?
+  businessType        BusinessType @default(studio) @map("business_type")
+  logoUrl             String?  @map("logo_url")
+  cancellationPolicy  String?  @map("cancellation_policy")
+  stripeAccountId     String?  @map("stripe_account_id")
+  stripeConnected     Boolean  @default(false) @map("stripe_connected")
+  isActive            Boolean  @default(true) @map("is_active")
+  isTest              Boolean  @default(false) @map("is_test")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  members            BusinessMember[]
+  services           Service[]
+  customers          Customer[]
+  vehicles           Vehicle[]
+  bookings           Booking[]
+  statusHistory      BookingStatusHistory[]
+  payments           Payment[]
+  availabilityRules  AvailabilityRule[]
+  blockedSlots       BlockedSlot[]
+  settings           BusinessSettings?
+  emailLogs          EmailLog[]
+
+  @@map("businesses")
+}
+
+model BusinessMember {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId     String   @map("user_id")
+  profile    Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       MemberRole @default(owner)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([businessId, userId])
+  @@index([userId])
+  @@index([businessId])
+  @@map("business_members")
+}
+
+model Service {
+  id               String   @id @default(uuid())
+  businessId       String   @map("business_id")
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  category         ServiceCategory @default(other)
+  priceCents       Int      @map("price_cents")
+  durationMinutes  Int      @map("duration_minutes")
+  depositRequired  Boolean  @default(false) @map("deposit_required")
+  depositType      DepositType @default(fixed) @map("deposit_type")
+  depositValue     Int      @default(0) @map("deposit_value")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  bookings Booking[]
+
+  @@index([businessId])
+  @@map("services")
+}
+
+model Customer {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  fullName   String   @map("full_name")
+  email      String?
+  phone      String?
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  vehicles Vehicle[]
+  bookings Booking[]
+
+  @@index([businessId])
+  @@map("customers")
+}
+
+model Vehicle {
+  id           String   @id @default(uuid())
+  businessId   String   @map("business_id")
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId   String   @map("customer_id")
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  make         String
+  model        String
+  year         Int?
+  plate        String?
+  sizeCategory SizeCategory? @map("size_category")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  bookings Booking[]
+
+  @@index([businessId])
+  @@index([customerId])
+  @@map("vehicles")
+}
+
+model Booking {
+  id                  String   @id @default(uuid())
+  businessId          String   @map("business_id")
+  business            Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  serviceId           String   @map("service_id")
+  service             Service  @relation(fields: [serviceId], references: [id])
+  customerId          String   @map("customer_id")
+  customer            Customer @relation(fields: [customerId], references: [id])
+  vehicleId           String?  @map("vehicle_id")
+  vehicle             Vehicle? @relation(fields: [vehicleId], references: [id])
+  status              BookingStatus @default(pending)
+  startsAt            DateTime @map("starts_at")
+  endsAt              DateTime @map("ends_at")
+  totalPriceCents     Int      @map("total_price_cents")
+  depositAmountCents  Int      @default(0) @map("deposit_amount_cents")
+  depositPaid         Boolean  @default(false) @map("deposit_paid")
+  publicCancelToken   String   @unique @default(uuid()) @map("public_cancel_token")
+  notes               String?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  statusHistory BookingStatusHistory[]
+  payments      Payment[]
+  reminder      BookingReminder?
+
+  @@index([businessId])
+  @@index([businessId, startsAt])
+  @@index([businessId, status])
+  @@map("bookings")
+}
+
+model BookingStatusHistory {
+  id                  String   @id @default(uuid())
+  businessId          String   @map("business_id")
+  business            Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookingId           String   @map("booking_id")
+  booking             Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  oldStatus           BookingStatus? @map("old_status")
+  newStatus           BookingStatus @map("new_status")
+  changedByProfileId  String?  @map("changed_by_profile_id")
+  changedByProfile    Profile? @relation(fields: [changedByProfileId], references: [id])
+  changedAt           DateTime @default(now()) @map("changed_at")
+
+  @@index([businessId, bookingId])
+  @@map("booking_status_history")
+}
+
+model Payment {
+  id                        String   @id @default(uuid())
+  businessId                String   @map("business_id")
+  business                  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookingId                 String   @map("booking_id")
+  booking                   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  stripePaymentIntentId     String?  @map("stripe_payment_intent_id")
+  stripeCheckoutSessionId   String?  @unique @map("stripe_checkout_session_id")
+  stripeConnectedAccountId  String?  @map("stripe_connected_account_id")
+  amountCents               Int      @map("amount_cents")
+  currency                  String   @default("eur")
+  status                    PaymentStatus @default(pending)
+  provider                  String   @default("stripe")
+  applicationFeeCents       Int      @default(0) @map("application_fee_cents")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@index([bookingId])
+  @@map("payments")
+}
+
+model AvailabilityRule {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  weekday    Int
+  startTime  String   @map("start_time") // "HH:mm"
+  endTime    String   @map("end_time")
+  isActive   Boolean  @default(true) @map("is_active")
+
+  @@index([businessId])
+  @@map("availability_rules")
+}
+
+model BlockedSlot {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  startsAt   DateTime @map("starts_at")
+  endsAt     DateTime @map("ends_at")
+  reason     String?
+
+  @@index([businessId])
+  @@map("blocked_slots")
+}
+
+model BusinessSettings {
+  id                    String   @id @default(uuid())
+  businessId            String   @unique @map("business_id")
+  business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  timezone              String   @default("Europe/Paris")
+  reminderHoursBefore   Int      @default(24) @map("reminder_hours_before")
+  bookingNoticeHours    Int      @default(12) @map("booking_notice_hours")
+  bufferMinutes         Int      @default(15) @map("buffer_minutes")
+  confirmationMessage   String?  @map("confirmation_message")
+  reminderMessage       String?  @map("reminder_message")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("business_settings")
+}
+
+model EmailLog {
+  id         String    @id @default(uuid())
+  businessId String?   @map("business_id")
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  bookingId  String?   @map("booking_id")
+  resendId   String?   @map("resend_id")
+  type       EmailType
+  recipient  String
+  status     String    @default("sent")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@map("email_logs")
+}
+
+model BookingReminder {
+  bookingId String   @id @map("booking_id")
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sentAt    DateTime @default(now()) @map("sent_at")
+
+  @@map("booking_reminders")
+}

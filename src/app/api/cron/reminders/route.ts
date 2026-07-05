@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/mailer";
 import { bookingReminderEmail } from "@/lib/emails";
 import { appUrl } from "@/lib/stripe";
@@ -17,51 +17,45 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const supabase = createAdminClient();
   const now = new Date();
   const horizon = new Date(now.getTime() + 72 * 3600_000); // look 72h ahead max
 
-  const { data: bookings, error } = await supabase.from("bookings")
-    .select("id, business_id, starts_at, total_price_cents, deposit_amount_cents, public_cancel_token, services(name), customers(full_name, email), businesses(name)")
-    .in("status", ["pending", "confirmed"])
-    .gte("starts_at", now.toISOString())
-    .lte("starts_at", horizon.toISOString());
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const bookings = await db.booking.findMany({
+    where: {
+      status: { in: ["pending", "confirmed"] },
+      startsAt: { gte: now, lte: horizon },
+    },
+    include: { service: true, customer: true, business: true, reminder: true },
+  });
 
   let sent = 0;
-  for (const b of bookings ?? []) {
-    const customer = b.customers as { full_name?: string; email?: string | null } | null;
-    if (!customer?.email) continue;
+  for (const b of bookings) {
+    if (!b.customer.email) continue;
+    if (b.reminder) continue;
 
-    const { data: already } = await supabase.from("booking_reminders")
-      .select("booking_id").eq("booking_id", b.id).maybeSingle();
-    if (already) continue;
-
-    const { data: settings } = await supabase.from("business_settings")
-      .select("timezone, reminder_hours_before, reminder_message")
-      .eq("business_id", b.business_id).maybeSingle();
-    const hoursBefore = settings?.reminder_hours_before ?? 24;
-    const sendAt = new Date(new Date(b.starts_at).getTime() - hoursBefore * 3600_000);
+    const settings = await db.businessSettings.findUnique({ where: { businessId: b.businessId } });
+    const hoursBefore = settings?.reminderHoursBefore ?? 24;
+    const sendAt = new Date(b.startsAt.getTime() - hoursBefore * 3600_000);
     if (now < sendAt) continue;
 
     const email = bookingReminderEmail({
-      businessName: (b.businesses as { name?: string } | null)?.name ?? "",
-      customerName: customer.full_name ?? "",
-      serviceName: (b.services as { name?: string } | null)?.name ?? "Service",
-      startsAt: b.starts_at,
+      businessName: b.business.name,
+      customerName: b.customer.fullName,
+      serviceName: b.service.name,
+      startsAt: b.startsAt.toISOString(),
       timezone: settings?.timezone ?? "Europe/Paris",
-      totalCents: b.total_price_cents,
-      depositCents: b.deposit_amount_cents,
-      cancelUrl: appUrl(`/cancel/${b.public_cancel_token}`),
-    }, settings?.reminder_message);
+      totalCents: b.totalPriceCents,
+      depositCents: b.depositAmountCents,
+      cancelUrl: appUrl(`/cancel/${b.publicCancelToken}`),
+    }, settings?.reminderMessage);
 
     await sendEmail({
-      type: "booking_reminder", to: customer.email, ...email,
-      businessId: b.business_id, bookingId: b.id,
+      type: "booking_reminder", to: b.customer.email, ...email,
+      businessId: b.businessId, bookingId: b.id,
     });
-    await supabase.from("booking_reminders").insert({ booking_id: b.id });
+    await db.bookingReminder.create({ data: { bookingId: b.id } });
     sent++;
   }
 
-  return NextResponse.json({ ok: true, checked: bookings?.length ?? 0, sent });
+  return NextResponse.json({ ok: true, checked: bookings.length, sent });
 }

@@ -1,11 +1,13 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
+import { createSession, destroySession, getSessionProfileId } from "@/lib/auth";
 import { sendEmail } from "@/lib/mailer";
-import { welcomeEmail } from "@/lib/emails";
+import { welcomeEmail, passwordResetEmail } from "@/lib/emails";
 import { appUrl } from "@/lib/stripe";
 
 const credsSchema = z.object({
@@ -19,62 +21,84 @@ export async function signUp(_prev: unknown, formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { email, password, full_name } = parsed.data;
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { full_name: full_name ?? "" }, emailRedirectTo: appUrl("/auth/callback") },
-  });
-  if (error) return { error: error.message };
+  const existing = await db.profile.findUnique({ where: { email } });
+  if (existing) return { error: "Un compte existe déjà avec cet email." };
 
-  // Auto-grant platform_admin from allowlist
+  const passwordHash = await bcrypt.hash(password, 10);
   const admins = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
     .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-  if (data.user && admins.includes(email.toLowerCase())) {
-    const admin = createAdminClient();
-    await admin.from("profiles").upsert({
-      id: data.user.id, email, full_name: full_name ?? "", platform_role: "platform_admin",
-    });
-  }
+
+  const profile = await db.profile.create({
+    data: {
+      email, passwordHash, fullName: full_name ?? "",
+      platformRole: admins.includes(email.toLowerCase()) ? "platform_admin" : null,
+    },
+  });
 
   await sendEmail({ type: "welcome", to: email, ...welcomeEmail(full_name ?? "") });
-
-  // If email confirmation is disabled, a session exists — go straight to onboarding.
-  if (data.session) redirect("/onboarding");
-  return { success: "Compte créé. Vérifie ta boîte mail pour confirmer ton adresse." };
+  await createSession(profile.id);
+  redirect("/onboarding");
 }
 
 export async function signIn(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: "Identifiants invalides." };
+
+  const profile = await db.profile.findUnique({ where: { email } });
+  if (!profile || !(await bcrypt.compare(password, profile.passwordHash))) {
+    return { error: "Identifiants invalides." };
+  }
+  await createSession(profile.id);
   redirect(String(formData.get("next") || "/dashboard"));
 }
 
 export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  await destroySession();
   redirect("/login");
 }
 
 export async function resetPassword(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") ?? "");
   if (!email.includes("@")) return { error: "Email invalide." };
-  const supabase = await createClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: appUrl("/auth/callback?next=/update-password"),
-  });
-  if (error) return { error: error.message };
-  return { success: "Email de réinitialisation envoyé (si le compte existe)." };
+
+  const profile = await db.profile.findUnique({ where: { email } });
+  if (profile) {
+    const token = randomUUID();
+    await db.passwordResetToken.create({
+      data: { token, profileId: profile.id, expiresAt: new Date(Date.now() + 3600_000) },
+    });
+    const url = appUrl(`/reset-password/${token}`);
+    await sendEmail({ type: "welcome", to: email, ...passwordResetEmail(url) });
+  }
+  return { success: "Si ce compte existe, un email de réinitialisation a été envoyé." };
+}
+
+export async function updatePasswordWithToken(_prev: unknown, formData: FormData) {
+  const token = String(formData.get("token") ?? "");
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) return { error: "8 caractères minimum." };
+
+  const reset = await db.passwordResetToken.findUnique({ where: { token } });
+  if (!reset || reset.usedAt || reset.expiresAt < new Date()) {
+    return { error: "Lien invalide ou expiré." };
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await db.$transaction([
+    db.profile.update({ where: { id: reset.profileId }, data: { passwordHash } }),
+    db.passwordResetToken.update({ where: { token }, data: { usedAt: new Date() } }),
+  ]);
+  await createSession(reset.profileId);
+  redirect("/dashboard");
 }
 
 export async function updatePassword(_prev: unknown, formData: FormData) {
+  const profileId = await getSessionProfileId();
+  if (!profileId) redirect("/login");
   const password = String(formData.get("password") ?? "");
   if (password.length < 8) return { error: "8 caractères minimum." };
-  const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: error.message };
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await db.profile.update({ where: { id: profileId }, data: { passwordHash } });
   redirect("/dashboard");
 }

@@ -1,41 +1,38 @@
 import { requirePlatformAdmin } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
 
 export default async function AdminPage() {
   await requirePlatformAdmin();
-  const supabase = createAdminClient();
 
-  const [businesses, users, bookings, payments, emailFails] = await Promise.all([
-    supabase.from("businesses").select("id, is_test, stripe_connected", { count: "exact" }),
-    supabase.from("profiles").select("id", { count: "exact", head: true }),
-    supabase.from("bookings").select("id, status", { count: "exact" }),
-    supabase.from("payments").select("amount_cents, status"),
-    supabase.from("email_logs").select("id", { count: "exact", head: true }).like("status", "failed%"),
+  const [businesses, userCount, bookings, payments, emailFails] = await Promise.all([
+    db.business.findMany({ select: { id: true, isTest: true, stripeConnected: true } }),
+    db.profile.count(),
+    db.booking.findMany({ select: { id: true, status: true } }),
+    db.payment.findMany({ select: { amountCents: true, status: true } }),
+    db.emailLog.count({ where: { status: { startsWith: "failed" } } }),
   ]);
 
-  const totalDeposits = (payments.data ?? [])
-    .filter((p) => p.status === "succeeded")
-    .reduce((s, p) => s + p.amount_cents, 0);
-  const pendingPayments = (payments.data ?? []).filter((p) => p.status === "pending").length;
-  const failedPayments = (payments.data ?? []).filter((p) => p.status === "failed").length;
-  const stripeConnected = (businesses.data ?? []).filter((b) => b.stripe_connected).length;
-  const testBusinesses = (businesses.data ?? []).filter((b) => b.is_test).length;
-  const byStatus = (bookings.data ?? []).reduce<Record<string, number>>((acc, b) => {
+  const totalDeposits = payments.filter((p) => p.status === "succeeded").reduce((s, p) => s + p.amountCents, 0);
+  const pendingPayments = payments.filter((p) => p.status === "pending").length;
+  const failedPayments = payments.filter((p) => p.status === "failed").length;
+  const stripeConnected = businesses.filter((b) => b.stripeConnected).length;
+  const testBusinesses = businesses.filter((b) => b.isTest).length;
+  const byStatus = bookings.reduce<Record<string, number>>((acc, b) => {
     acc[b.status] = (acc[b.status] ?? 0) + 1;
     return acc;
   }, {});
 
   const stats: [string, string | number][] = [
-    ["Businesses", businesses.count ?? 0],
+    ["Businesses", businesses.length],
     ["dont test/internal", testBusinesses],
     ["Stripe connectés", stripeConnected],
-    ["Users", users.count ?? 0],
-    ["Bookings", bookings.count ?? 0],
+    ["Users", userCount],
+    ["Bookings", bookings.length],
     ["Acomptes encaissés", formatCents(totalDeposits)],
     ["Paiements pending", pendingPayments],
     ["Paiements failed", failedPayments],
-    ["Emails en échec", emailFails.count ?? 0],
+    ["Emails en échec", emailFails],
   ];
 
   return (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +23,10 @@ export async function POST(request: Request) {
 
   if (event.type === "account.updated") {
     const account = event.data.object as Stripe.Account;
-    const supabase = createAdminClient();
-    await supabase.from("businesses")
-      .update({ stripe_connected: Boolean(account.charges_enabled) })
-      .eq("stripe_account_id", account.id);
+    await db.business.updateMany({
+      where: { stripeAccountId: account.id },
+      data: { stripeConnected: Boolean(account.charges_enabled) },
+    });
   }
 
   return NextResponse.json({ received: true });

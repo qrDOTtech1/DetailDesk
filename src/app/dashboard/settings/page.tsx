@@ -1,5 +1,5 @@
 import { requireBusiness } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 import { refreshStripeStatus, connectStripe } from "../actions";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui";
 import { BusinessSettingsForm, BookingSettingsForm } from "./settings-forms";
@@ -13,9 +13,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     await refreshStripeStatus();
   }
 
-  const supabase = await createClient();
-  const { data: settings } = await supabase.from("business_settings")
-    .select("*").eq("business_id", ctx.business.id).maybeSingle();
+  const settings = await db.businessSettings.findUnique({ where: { businessId: ctx.business.id } });
 
   return (
     <div className="space-y-6">
@@ -61,7 +59,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <CardTitle>Réservations & rappels</CardTitle>
             <CardDescription>Fuseau horaire, délais et messages.</CardDescription>
           </CardHeader>
-          <CardContent><BookingSettingsForm settings={settings} /></CardContent>
+          <CardContent>
+            <BookingSettingsForm settings={settings ? {
+              timezone: settings.timezone,
+              reminder_hours_before: settings.reminderHoursBefore,
+              booking_notice_hours: settings.bookingNoticeHours,
+              buffer_minutes: settings.bufferMinutes,
+              confirmation_message: settings.confirmationMessage,
+              reminder_message: settings.reminderMessage,
+            } : null} />
+          </CardContent>
         </Card>
       </div>
     </div>

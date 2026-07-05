@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 
@@ -10,21 +10,21 @@ export default async function ConfirmedPage({ params, searchParams }: {
 }) {
   const { slug, bookingId } = await params;
   const { paid } = await searchParams;
-  const supabase = createAdminClient();
 
-  const { data: business } = await supabase.from("businesses")
-    .select("id, name").eq("slug", slug).maybeSingle();
+  const business = await db.business.findFirst({ where: { slug }, select: { id: true, name: true } });
   if (!business) notFound();
 
-  const { data: booking } = await supabase.from("bookings")
-    .select("*, services(name), customers(full_name)")
-    .eq("id", bookingId).eq("business_id", business.id).maybeSingle();
+  const booking = await db.booking.findFirst({
+    where: { id: bookingId, businessId: business.id },
+    include: { service: true, customer: true },
+  });
   if (!booking) notFound();
 
-  const { data: settings } = await supabase.from("business_settings")
-    .select("timezone, confirmation_message").eq("business_id", business.id).maybeSingle();
+  const settings = await db.businessSettings.findUnique({
+    where: { businessId: business.id }, select: { timezone: true, confirmationMessage: true },
+  });
   const tz = settings?.timezone ?? "Europe/Paris";
-  const paymentCancelled = paid === "0" && booking.deposit_amount_cents > 0 && !booking.deposit_paid;
+  const paymentCancelled = paid === "0" && booking.depositAmountCents > 0 && !booking.depositPaid;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
@@ -40,14 +40,14 @@ export default async function ConfirmedPage({ params, searchParams }: {
         <CardContent className="space-y-3 text-sm">
           <div className="rounded-md border p-4 text-left">
             <p><span className="text-muted-foreground">Business :</span> <strong>{business.name}</strong></p>
-            <p><span className="text-muted-foreground">Service :</span> {(booking.services as { name?: string } | null)?.name}</p>
-            <p><span className="text-muted-foreground">Date :</span> {formatDateTime(booking.starts_at, tz)}</p>
-            <p><span className="text-muted-foreground">Prix :</span> {formatCents(booking.total_price_cents)}</p>
-            {booking.deposit_amount_cents > 0 && (
+            <p><span className="text-muted-foreground">Service :</span> {booking.service.name}</p>
+            <p><span className="text-muted-foreground">Date :</span> {formatDateTime(booking.startsAt.toISOString(), tz)}</p>
+            <p><span className="text-muted-foreground">Prix :</span> {formatCents(booking.totalPriceCents)}</p>
+            {booking.depositAmountCents > 0 && (
               <p>
-                <span className="text-muted-foreground">Acompte :</span> {formatCents(booking.deposit_amount_cents)}{" "}
-                <Badge variant={booking.deposit_paid ? "success" : "warning"}>
-                  {booking.deposit_paid ? "payé" : "en attente"}
+                <span className="text-muted-foreground">Acompte :</span> {formatCents(booking.depositAmountCents)}{" "}
+                <Badge variant={booking.depositPaid ? "success" : "warning"}>
+                  {booking.depositPaid ? "payé" : "en attente"}
                 </Badge>
               </p>
             )}
@@ -57,7 +57,7 @@ export default async function ConfirmedPage({ params, searchParams }: {
               Le paiement de l&apos;acompte a été interrompu. Le pro pourra te recontacter pour finaliser.
             </p>
           )}
-          {settings?.confirmation_message && <p className="text-muted-foreground">{settings.confirmation_message}</p>}
+          {settings?.confirmationMessage && <p className="text-muted-foreground">{settings.confirmationMessage}</p>}
           <p className="text-muted-foreground">Un email de confirmation t&apos;a été envoyé.</p>
           <Link href={`/b/${slug}`} className="text-sm underline">← Retour à la page de réservation</Link>
         </CardContent>
