@@ -52,13 +52,25 @@ export async function getSessionProfileId(): Promise<string | null> {
   return verifySession(token);
 }
 
+function isAllowlistedAdminEmail(email: string) {
+  return (process.env.PLATFORM_ADMIN_EMAILS ?? "")
+    .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
+    .includes(email.toLowerCase());
+}
+
 /** Requires a logged-in user; redirects to /login otherwise. */
 export async function requireUser(): Promise<SessionContext> {
   const profileId = await getSessionProfileId();
   if (!profileId) redirect("/login");
 
-  const profile = await db.profile.findUnique({ where: { id: profileId } });
+  let profile = await db.profile.findUnique({ where: { id: profileId } });
   if (!profile) redirect("/login");
+
+  // Auto-promote: covers accounts created before their email was added to
+  // PLATFORM_ADMIN_EMAILS, so no manual SQL is ever needed.
+  if (profile.platformRole !== "platform_admin" && isAllowlistedAdminEmail(profile.email)) {
+    profile = await db.profile.update({ where: { id: profile.id }, data: { platformRole: "platform_admin" } });
+  }
 
   return {
     user: { id: profile.id, email: profile.email },
