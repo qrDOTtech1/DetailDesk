@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 const items = [
   ["/dashboard", "Aperçu"],
+  ["/dashboard/calendar", "Planning"],
   ["/dashboard/bookings", "Réservations"],
   ["/dashboard/services", "Services"],
   ["/dashboard/customers", "Clients"],

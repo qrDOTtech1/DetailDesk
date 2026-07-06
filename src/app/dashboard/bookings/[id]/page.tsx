@@ -7,6 +7,7 @@ import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@/components/ui";
 import { PhotoPanel } from "./photo-panel";
 import { RescheduleForm } from "./reschedule-form";
+import { RefundButton } from "./refund-button";
 
 const transitions: Record<string, [string, string][]> = {
   pending: [["confirmed", "Confirmer"], ["cancelled", "Annuler"]],
@@ -105,6 +106,9 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
                 <StatusBadge status={p.status} />
               </div>
             ))}
+            {["cancelled", "no_show"].includes(booking.status) && payments.some((p) => p.status === "succeeded") && (
+              <RefundButton bookingId={booking.id} />
+            )}
             {history.map((h) => (
               <p key={h.id} className="text-xs text-muted-foreground">
                 {formatDateTime(h.changedAt.toISOString(), tz)} : {h.oldStatus ?? "—"} → {h.newStatus}

@@ -28,6 +28,18 @@ export async function sendEmail({ type, to, subject, html, businessId, bookingId
   let resendId: string | null = null;
   let status = "sent";
 
+  // customer-facing emails sent on behalf of a business reply to the PRO,
+  // not to our sending domain
+  let replyTo: string | undefined;
+  if (businessId && type !== "new_booking_pro" && type !== "welcome") {
+    try {
+      const biz = await db.business.findUnique({
+        where: { id: businessId }, select: { email: true },
+      });
+      replyTo = biz?.email ?? undefined;
+    } catch { /* non-blocking */ }
+  }
+
   try {
     if (!process.env.RESEND_API_KEY) {
       status = "skipped_no_api_key";
@@ -39,6 +51,7 @@ export async function sendEmail({ type, to, subject, html, businessId, bookingId
         to,
         subject,
         html,
+        replyTo,
       });
       if (error) {
         status = `failed: ${error.message}`.slice(0, 200);

@@ -635,6 +635,36 @@ export async function connectStripe() {
   redirect(link.url);
 }
 
+/* ─────────── REFUND ─────────── */
+
+/** Refunds the deposit of a booking on the PRO's connected account. */
+export async function refundDeposit(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  if (ctx.role !== "owner") return { error: "Réservé au propriétaire." };
+  const bookingId = String(formData.get("booking_id"));
+
+  const payment = await db.payment.findFirst({
+    where: { bookingId, businessId: ctx.business.id, status: "succeeded" },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!payment?.stripePaymentIntentId || !payment.stripeConnectedAccountId) {
+    return { error: "Aucun paiement remboursable trouvé." };
+  }
+
+  try {
+    await stripe.refunds.create(
+      { payment_intent: payment.stripePaymentIntentId },
+      { stripeAccount: payment.stripeConnectedAccountId }
+    );
+  } catch (e) {
+    return { error: "Remboursement Stripe échoué : " + (e instanceof Error ? e.message : "inconnu") };
+  }
+
+  await db.payment.update({ where: { id: payment.id }, data: { status: "refunded" } });
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  return { success: "Acompte remboursé. Le client le verra sous 5 à 10 jours sur son relevé." };
+}
+
 /* ─────────── SUBSCRIPTION (platform billing, 29€/mois) ─────────── */
 
 /** Starts the DetailDesk Pro subscription via Stripe Checkout (14-day trial). */
