@@ -48,8 +48,9 @@ export function ServiceForm({ service, onDone }: { service?: Service; onDone?: (
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Prix (centimes — ex. 8900 = 89,00 €)</Label>
-        <Input name="price_cents" type="number" min={0} required defaultValue={service?.price_cents ?? 0} />
+        <Label>Prix (€)</Label>
+        <Input name="price_euros" type="number" min={0} step="0.01" required
+          defaultValue={service ? service.price_cents / 100 : ""} placeholder="89" />
       </div>
       <div className="flex items-center gap-2">
         <input id={`dep-${service?.id ?? "new"}`} type="checkbox" name="deposit_required"
@@ -61,13 +62,16 @@ export function ServiceForm({ service, onDone }: { service?: Service; onDone?: (
           <div className="space-y-1.5">
             <Label>Type d&apos;acompte</Label>
             <Select name="deposit_type" defaultValue={service?.deposit_type ?? "fixed"}>
-              <option value="fixed">Montant fixe (centimes)</option>
-              <option value="percent">Pourcentage</option>
+              <option value="fixed">Montant fixe (€)</option>
+              <option value="percent">Pourcentage (%)</option>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Valeur</Label>
-            <Input name="deposit_value" type="number" min={0} defaultValue={service?.deposit_value ?? 0} />
+            <Label>Valeur (€ ou %)</Label>
+            <Input name="deposit_value" type="number" min={0} step="0.01"
+              defaultValue={service
+                ? (service.deposit_type === "fixed" ? service.deposit_value / 100 : service.deposit_value)
+                : 0} />
           </div>
         </div>
       )}

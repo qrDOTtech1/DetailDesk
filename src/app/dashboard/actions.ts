@@ -29,9 +29,14 @@ export async function upsertService(_prev: ActionState, formData: FormData): Pro
   const id = formData.get("id") ? String(formData.get("id")) : null;
   const data = {
     name: parsed.data.name, description: parsed.data.description || null,
-    category: parsed.data.category, priceCents: parsed.data.price_cents,
+    category: parsed.data.category,
+    priceCents: Math.round(parsed.data.price_euros * 100),
     durationMinutes: parsed.data.duration_minutes, depositRequired: parsed.data.deposit_required,
-    depositType: parsed.data.deposit_type, depositValue: parsed.data.deposit_value,
+    depositType: parsed.data.deposit_type,
+    // fixed deposits are entered in euros; percent stays a percentage
+    depositValue: parsed.data.deposit_type === "fixed"
+      ? Math.round(parsed.data.deposit_value * 100)
+      : Math.round(parsed.data.deposit_value),
     isActive: parsed.data.is_active,
   };
 
@@ -107,6 +112,13 @@ export async function upsertVehicle(_prev: ActionState, formData: FormData): Pro
 
 /* ─────────── BOOKINGS ─────────── */
 
+// Allowed status transitions — terminal states cannot be reopened.
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["completed", "no_show", "cancelled"],
+  completed: [], cancelled: [], no_show: [],
+};
+
 export async function updateBookingStatus(formData: FormData) {
   const ctx = await requireBusiness();
   const status = bookingStatusSchema.parse(String(formData.get("status")));
@@ -117,6 +129,7 @@ export async function updateBookingStatus(formData: FormData) {
     include: { service: true, customer: true },
   });
   if (!booking) return;
+  if (!ALLOWED_TRANSITIONS[booking.status]?.includes(status)) return;
 
   const oldStatus = booking.status;
   await db.$transaction([

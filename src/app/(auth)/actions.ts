@@ -1,7 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { randomUUID } from "node:crypto";
+import { rateLimit } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -16,10 +18,20 @@ const credsSchema = z.object({
   full_name: z.string().max(100).optional(),
 });
 
+async function clientIp() {
+  const h = await headers();
+  return h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+}
+
 export async function signUp(_prev: unknown, formData: FormData) {
   const parsed = credsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { email, password, full_name } = parsed.data;
+  const { password, full_name } = parsed.data;
+  const email = parsed.data.email.toLowerCase();
+
+  if (!rateLimit(`signup:${await clientIp()}`, 5, 3600_000)) {
+    return { error: "Trop de tentatives. Réessaie plus tard." };
+  }
 
   const existing = await db.profile.findUnique({ where: { email } });
   if (existing) return { error: "Un compte existe déjà avec cet email." };
@@ -41,8 +53,12 @@ export async function signUp(_prev: unknown, formData: FormData) {
 }
 
 export async function signIn(_prev: unknown, formData: FormData) {
-  const email = String(formData.get("email") ?? "");
+  const email = String(formData.get("email") ?? "").toLowerCase();
   const password = String(formData.get("password") ?? "");
+
+  if (!rateLimit(`login:${await clientIp()}`, 10, 900_000) || !rateLimit(`login:${email}`, 5, 900_000)) {
+    return { error: "Trop de tentatives. Réessaie dans quelques minutes." };
+  }
 
   const profile = await db.profile.findUnique({ where: { email } });
   if (!profile || !(await bcrypt.compare(password, profile.passwordHash))) {
@@ -58,8 +74,11 @@ export async function signOut() {
 }
 
 export async function resetPassword(_prev: unknown, formData: FormData) {
-  const email = String(formData.get("email") ?? "");
+  const email = String(formData.get("email") ?? "").toLowerCase();
   if (!email.includes("@")) return { error: "Email invalide." };
+  if (!rateLimit(`reset:${await clientIp()}`, 5, 3600_000)) {
+    return { error: "Trop de tentatives. Réessaie plus tard." };
+  }
 
   const profile = await db.profile.findUnique({ where: { email } });
   if (profile) {

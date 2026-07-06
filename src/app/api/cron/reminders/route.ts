@@ -20,6 +20,24 @@ export async function GET(request: Request) {
   const now = new Date();
   const horizon = new Date(now.getTime() + 72 * 3600_000); // look 72h ahead max
 
+  // Expire abandoned deposit checkouts: pending + unpaid deposit + older than
+  // 2h → cancel so the slot is freed (Stripe Checkout expires at 24h anyway).
+  const stale = await db.booking.findMany({
+    where: {
+      status: "pending", depositPaid: false, depositAmountCents: { gt: 0 },
+      createdAt: { lt: new Date(now.getTime() - 2 * 3600_000) },
+    },
+    select: { id: true, businessId: true },
+  });
+  for (const b of stale) {
+    await db.$transaction([
+      db.booking.update({ where: { id: b.id }, data: { status: "cancelled" } }),
+      db.bookingStatusHistory.create({
+        data: { businessId: b.businessId, bookingId: b.id, oldStatus: "pending", newStatus: "cancelled" },
+      }),
+    ]);
+  }
+
   const bookings = await db.booking.findMany({
     where: {
       status: { in: ["pending", "confirmed"] },
@@ -57,5 +75,5 @@ export async function GET(request: Request) {
     sent++;
   }
 
-  return NextResponse.json({ ok: true, checked: bookings.length, sent });
+  return NextResponse.json({ ok: true, checked: bookings.length, sent, expired: stale.length });
 }

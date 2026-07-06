@@ -12,14 +12,15 @@ export const businessSchema = z.object({
 });
 
 export const serviceSchema = z.object({
-  name: z.string().min(2).max(100),
+  name: z.string().min(2, "Nom trop court").max(100),
   description: z.string().max(1000).optional().or(z.literal("")),
   category: z.enum(["interior", "exterior", "polish", "ceramic", "restoration", "other"]),
-  price_cents: z.coerce.number().int().min(0).max(10_000_000),
+  // prices are entered in EUROS in the UI, converted to cents server-side
+  price_euros: z.coerce.number().min(0, "Prix invalide").max(100_000),
   duration_minutes: z.coerce.number().int().min(15).max(1440),
   deposit_required: z.coerce.boolean(),
   deposit_type: z.enum(["fixed", "percent"]),
-  deposit_value: z.coerce.number().int().min(0).max(1_000_000),
+  deposit_value: z.coerce.number().min(0).max(100_000), // euros (fixed) or % (percent)
   is_active: z.coerce.boolean(),
 }).refine((s) => s.deposit_type !== "percent" || s.deposit_value <= 100, {
   message: "Un acompte en % ne peut pas dépasser 100",

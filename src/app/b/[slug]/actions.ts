@@ -8,6 +8,8 @@ import { stripe, appUrl } from "@/lib/stripe";
 import { sendEmail } from "@/lib/mailer";
 import { bookingConfirmationEmail } from "@/lib/emails";
 import { addMinutes } from "date-fns";
+import { headers } from "next/headers";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * Public booking flow. The end customer has no account, so every query here
@@ -80,7 +82,13 @@ export async function getAvailableSlots(slug: string, serviceId: string, date: s
 export async function createPublicBooking(slug: string, input: unknown) {
   const parsed = publicBookingSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const d = parsed.data;
+  const d = { ...parsed.data, customer_email: parsed.data.customer_email.toLowerCase() };
+
+  const h = await headers();
+  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (!rateLimit(`book:${ip}`, 5, 3600_000) || !rateLimit(`book:${slug}`, 30, 3600_000)) {
+    return { error: "Trop de réservations en peu de temps. Réessaie plus tard." };
+  }
 
   const business = await getBusinessBySlug(slug);
   if (!business) return { error: "Business introuvable." };
@@ -127,7 +135,15 @@ export async function createPublicBooking(slug: string, input: unknown) {
         },
       });
 
-  const vehicle = await db.vehicle.create({
+  // reuse the customer's existing vehicle instead of duplicating it per booking
+  const existingVehicle = await db.vehicle.findFirst({
+    where: {
+      businessId: business.id, customerId: customer.id,
+      make: { equals: d.vehicle_make, mode: "insensitive" },
+      model: { equals: d.vehicle_model, mode: "insensitive" },
+    },
+  });
+  const vehicle = existingVehicle ?? await db.vehicle.create({
     data: {
       businessId: business.id, customerId: customer.id,
       make: d.vehicle_make, model: d.vehicle_model,
@@ -135,21 +151,44 @@ export async function createPublicBooking(slug: string, input: unknown) {
     },
   });
 
-  const booking = await db.booking.create({
-    data: {
-      businessId: business.id, serviceId: service.id,
-      customerId: customer.id, vehicleId: vehicle.id,
-      status: "pending",
-      startsAt: starts, endsAt: ends,
-      totalPriceCents: service.priceCents,
-      depositAmountCents: depositActive ? deposit : 0,
-      depositPaid: false,
-      notes: d.notes || null,
-    },
-  });
-  await db.bookingStatusHistory.create({
-    data: { businessId: business.id, bookingId: booking.id, oldStatus: null, newStatus: "pending" },
-  });
+  // Serializable transaction + overlap re-check: two concurrent requests for
+  // the same slot cannot both commit.
+  let booking;
+  try {
+    booking = await db.$transaction(async (tx) => {
+      const clash = await tx.booking.count({
+        where: {
+          businessId: business.id,
+          status: { in: ["pending", "confirmed"] },
+          startsAt: { lt: ends },
+          endsAt: { gt: starts },
+        },
+      });
+      if (clash > 0) throw new Error("SLOT_TAKEN");
+      const created = await tx.booking.create({
+        data: {
+          businessId: business.id, serviceId: service.id,
+          customerId: customer.id, vehicleId: vehicle.id,
+          status: "pending",
+          startsAt: starts, endsAt: ends,
+          totalPriceCents: service.priceCents,
+          depositAmountCents: depositActive ? deposit : 0,
+          depositPaid: false,
+          notes: d.notes || null,
+        },
+      });
+      await tx.bookingStatusHistory.create({
+        data: { businessId: business.id, bookingId: created.id, oldStatus: null, newStatus: "pending" },
+      });
+      return created;
+    }, { isolationLevel: "Serializable" });
+  } catch (e) {
+    if (e instanceof Error && e.message === "SLOT_TAKEN") {
+      return { error: "Ce créneau vient d'être réservé. Choisis-en un autre." };
+    }
+    // serialization conflict = concurrent booking on the same rows
+    return { error: "Ce créneau vient d'être réservé. Choisis-en un autre." };
+  }
 
   const cancelUrl = appUrl(`/cancel/${booking.publicCancelToken}`);
 
@@ -188,7 +227,12 @@ export async function createPublicBooking(slug: string, input: unknown) {
       return { checkoutUrl: session.url, bookingId: booking.id };
     } catch (e) {
       console.error("[stripe] checkout create failed", e);
-      // fall through: booking stands, deposit will be handled offline
+      // Stripe failed mid-flow: keep the booking but clear the phantom
+      // deposit so the dashboard doesn't show an unpayable "deposit pending".
+      await db.booking.update({
+        where: { id: booking.id },
+        data: { depositAmountCents: 0 },
+      });
     }
   }
 

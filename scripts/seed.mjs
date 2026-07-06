@@ -9,6 +9,13 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
+// Never seed a production database by accident: the demo accounts use a
+// publicly documented password. Override only with an explicit --force.
+if (process.env.APP_ENV === "production" && !process.argv.includes("--force")) {
+  console.error("✖ APP_ENV=production — seed refusé. Utilise --force si tu sais ce que tu fais.");
+  process.exit(1);
+}
+
 const db = new PrismaClient();
 
 const ADMIN_EMAIL = "admin@detaildesk.demo";

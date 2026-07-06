@@ -59,7 +59,11 @@ export async function POST(request: Request) {
         data: { depositPaid: true, status: booking.status === "pending" ? "confirmed" : booking.status },
       });
 
-      if (booking.customer.email) {
+      // Stripe retries webhooks — don't send duplicate emails for the same booking
+      const alreadySent = await db.emailLog.count({
+        where: { bookingId, type: "payment_confirmation", status: { not: { startsWith: "failed" } } },
+      });
+      if (booking.customer.email && alreadySent === 0) {
         const settings = await db.businessSettings.findUnique({ where: { businessId }, select: { timezone: true } });
         const info = {
           businessName: booking.business.name,
