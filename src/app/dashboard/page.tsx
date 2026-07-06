@@ -54,18 +54,6 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Acomptes encaissés</CardTitle></CardHeader>
-          <CardContent><p className="text-2xl font-bold">{formatCents(totalDeposits)}</p></CardContent></Card>
-        <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">RDV à venir</CardTitle></CardHeader>
-          <CardContent><p className="text-2xl font-bold">{upcoming.length}</p></CardContent></Card>
-        <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Services populaires</CardTitle></CardHeader>
-          <CardContent className="space-x-1">
-            {popular.length === 0 ? <p className="text-sm text-muted-foreground">—</p>
-              : popular.map((p) => <Badge key={p.name} variant="secondary">{p.name} ×{p.n}</Badge>)}
-          </CardContent></Card>
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
@@ -107,6 +95,25 @@ export default async function DashboardPage() {
             ))}
           </CardContent>
         </Card>
+      </div>
+
+      {/* compact metrics strip — below the actionable content, not a wall of cards */}
+      <div className="grid grid-cols-2 gap-4 rounded-lg border bg-background p-4 sm:grid-cols-3">
+        <div>
+          <p className="text-xs text-muted-foreground">Acomptes encaissés</p>
+          <p className="text-lg font-semibold">{formatCents(totalDeposits)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">RDV à venir</p>
+          <p className="text-lg font-semibold">{upcoming.length}</p>
+        </div>
+        <div className="col-span-2 sm:col-span-1">
+          <p className="text-xs text-muted-foreground">Services populaires</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {popular.length === 0 ? <span className="text-sm text-muted-foreground">—</span>
+              : popular.map((p) => <Badge key={p.name} variant="secondary">{p.name} ×{p.n}</Badge>)}
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

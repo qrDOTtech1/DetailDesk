@@ -4,24 +4,28 @@
 
 @layer base {
   :root {
+    /* Neutral, utilitarian palette — graphite base, one steel-blue accent.
+       No purple, no gradients, no glow. */
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 220 15% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
+    --card-foreground: 220 15% 12%;
+    --primary: 216 34% 22%;            /* deep steel blue — CTAs */
     --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 216 15% 95%;
+    --secondary-foreground: 220 15% 15%;
+    --muted: 216 15% 96%;
+    --muted-foreground: 220 9% 44%;
+    --accent: 216 20% 94%;
+    --accent-foreground: 220 15% 15%;
+    --destructive: 0 66% 48%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --border: 216 14% 89%;
+    --input: 216 14% 86%;
+    --ring: 216 34% 32%;
   }
   * { @apply border-border; }
   body { @apply bg-background text-foreground antialiased; }
+  /* Comfortable base size on mobile — no micro-UI */
+  html { font-size: 16px; -webkit-text-size-adjust: 100%; }
 }
