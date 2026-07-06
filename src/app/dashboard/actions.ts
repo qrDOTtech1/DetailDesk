@@ -461,6 +461,19 @@ export async function togglePromotion(formData: FormData) {
   revalidatePath("/dashboard/settings");
 }
 
+/* ─────────── SMS ─────────── */
+
+export async function toggleSmsReminders() {
+  const ctx = await requireBusiness();
+  const settings = await db.businessSettings.findUnique({ where: { businessId: ctx.business.id } });
+  await db.businessSettings.upsert({
+    where: { businessId: ctx.business.id },
+    create: { businessId: ctx.business.id, smsRemindersEnabled: true },
+    update: { smsRemindersEnabled: !settings?.smsRemindersEnabled },
+  });
+  revalidatePath("/dashboard/settings");
+}
+
 /* ─────────── STRIPE CONNECT ─────────── */
 
 export async function connectStripe() {

@@ -8,6 +8,7 @@ export default function Home() {
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <span className="font-bold text-lg">DetailDesk</span>
           <nav className="flex items-center gap-2">
+            <Link href="#tarifs"><Button variant="ghost" className="hidden sm:inline-flex">Tarifs</Button></Link>
             <Link href="/login"><Button variant="ghost">Connexion</Button></Link>
             <Link href="/signup"><Button>Créer mon compte</Button></Link>
           </nav>
@@ -38,6 +39,43 @@ export default function Home() {
                 <p className="mt-1 text-sm text-muted-foreground">{d}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="tarifs" className="border-t bg-muted/30">
+        <div className="mx-auto max-w-3xl px-4 py-16 text-center">
+          <h2 className="text-3xl font-bold tracking-tight">Un tarif simple, sans surprise</h2>
+          <p className="mt-2 text-muted-foreground">Tout est inclus. Sans engagement.</p>
+
+          <div className="mx-auto mt-8 max-w-sm rounded-lg border bg-background p-8 text-left shadow-sm">
+            <p className="text-sm font-medium text-muted-foreground">DetailDesk Pro</p>
+            <p className="mt-2">
+              <span className="text-4xl font-bold">29 €</span>
+              <span className="text-muted-foreground"> / mois</span>
+            </p>
+            <ul className="mt-6 space-y-2 text-sm">
+              {[
+                "Lien de réservation public illimité",
+                "Acomptes Stripe sur TON compte (0 % de commission)",
+                "Clients, véhicules et historique illimités",
+                "Rappels email automatiques",
+                "150 SMS de rappel / mois inclus",
+                "Relances rebooking + demandes d'avis Google auto",
+                "Photos avant/après + galerie publique",
+                "Portail client + codes promo",
+              ].map((f) => (
+                <li key={f} className="flex gap-2"><span className="text-emerald-600">✓</span>{f}</li>
+              ))}
+            </ul>
+            <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
+              Au-delà des 150 SMS inclus : 1 € par tranche de 10 SMS, décompté en toute
+              transparence dans tes réglages. Les paiements de tes clients vont directement
+              sur ton compte Stripe.
+            </p>
+            <Link href="/signup" className="mt-6 block">
+              <Button className="w-full" size="lg">Commencer maintenant</Button>
+            </Link>
           </div>
         </div>
       </section>

@@ -329,6 +329,8 @@ model BusinessSettings {
   bufferMinutes         Int      @default(15) @map("buffer_minutes")
   googleReviewUrl       String?  @map("google_review_url")
   showPublicGallery     Boolean  @default(false) @map("show_public_gallery")
+  smsRemindersEnabled   Boolean  @default(false) @map("sms_reminders_enabled")
+  smsQuotaMonthly       Int      @default(150) @map("sms_quota_monthly")
   confirmationMessage   String?  @map("confirmation_message")
   reminderMessage       String?  @map("reminder_message")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -467,6 +469,20 @@ model PromotionRedemption {
 
   @@index([promotionId])
   @@map("promotion_redemptions")
+}
+
+model SmsLog {
+  id          String   @id @default(uuid())
+  businessId  String   @map("business_id")
+  bookingId   String?  @map("booking_id")
+  recipient   String
+  type        String   // "booking_reminder"
+  status      String   @default("sent")
+  clicksendId String?  @map("clicksend_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([businessId, createdAt])
+  @@map("sms_logs")
 }
 
 model BookingReminder {

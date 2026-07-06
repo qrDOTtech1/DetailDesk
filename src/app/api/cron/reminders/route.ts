@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/mailer";
 import { bookingReminderEmail, reviewRequestEmail, rebookingEmail } from "@/lib/emails";
 import { appUrl } from "@/lib/stripe";
+import { sendSms } from "@/lib/sms";
 
 export const dynamic = "force-dynamic";
 
@@ -47,30 +48,50 @@ export async function GET(request: Request) {
   });
 
   let sent = 0;
+  let smsSent = 0;
   for (const b of bookings) {
-    if (!b.customer.email) continue;
     if (b.reminder) continue;
+    if (!b.customer.email && !b.customer.phone) continue;
 
     const settings = await db.businessSettings.findUnique({ where: { businessId: b.businessId } });
     const hoursBefore = settings?.reminderHoursBefore ?? 24;
     const sendAt = new Date(b.startsAt.getTime() - hoursBefore * 3600_000);
     if (now < sendAt) continue;
 
-    const email = bookingReminderEmail({
-      businessName: b.business.name,
-      customerName: b.customer.fullName,
-      serviceName: b.service.name,
-      startsAt: b.startsAt.toISOString(),
-      timezone: settings?.timezone ?? "Europe/Paris",
-      totalCents: b.totalPriceCents,
-      depositCents: b.depositAmountCents,
-      cancelUrl: appUrl(`/cancel/${b.publicCancelToken}`),
-    }, settings?.reminderMessage);
+    const tz = settings?.timezone ?? "Europe/Paris";
 
-    await sendEmail({
-      type: "booking_reminder", to: b.customer.email, ...email,
-      businessId: b.businessId, bookingId: b.id,
-    });
+    if (b.customer.email) {
+      const email = bookingReminderEmail({
+        businessName: b.business.name,
+        customerName: b.customer.fullName,
+        serviceName: b.service.name,
+        startsAt: b.startsAt.toISOString(),
+        timezone: tz,
+        totalCents: b.totalPriceCents,
+        depositCents: b.depositAmountCents,
+        cancelUrl: appUrl(`/cancel/${b.publicCancelToken}`),
+      }, settings?.reminderMessage);
+      await sendEmail({
+        type: "booking_reminder", to: b.customer.email, ...email,
+        businessId: b.businessId, bookingId: b.id,
+      });
+    }
+
+    // SMS reminder — opt-in per business; overage above the monthly quota
+    // is billed to the pro (1€ / 10 SMS), so we keep sending past quota.
+    if (settings?.smsRemindersEnabled && b.customer.phone) {
+      const when = new Intl.DateTimeFormat("fr-FR", {
+        weekday: "short", day: "numeric", month: "short",
+        hour: "2-digit", minute: "2-digit", timeZone: tz,
+      }).format(b.startsAt);
+      const ok = await sendSms({
+        to: b.customer.phone,
+        body: `Rappel RDV ${b.business.name} : ${b.service.name} ${when}. Empêchement ? ${appUrl(`/cancel/${b.publicCancelToken}`)}`,
+        businessId: b.businessId, bookingId: b.id,
+      });
+      if (ok) smsSent++;
+    }
+
     await db.bookingReminder.create({ data: { bookingId: b.id } });
     sent++;
   }
@@ -136,6 +157,6 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    ok: true, checked: bookings.length, sent, expired: stale.length, reviews, rebookings,
+    ok: true, checked: bookings.length, sent, smsSent, expired: stale.length, reviews, rebookings,
   });
 }

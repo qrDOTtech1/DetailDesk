@@ -5,10 +5,20 @@ import { toggleBusinessTest, toggleBusinessActive } from "../actions";
 
 export default async function AdminBusinessesPage() {
   await requirePlatformAdmin();
-  const businesses = await db.business.findMany({
-    include: { _count: { select: { members: true, bookings: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const [businesses, smsCounts, settingsRows] = await Promise.all([
+    db.business.findMany({
+      include: { _count: { select: { members: true, bookings: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.smsLog.groupBy({
+      by: ["businessId"], _count: { businessId: true },
+      where: { createdAt: { gte: monthStart }, status: "sent" },
+    }),
+    db.businessSettings.findMany({ select: { businessId: true, smsQuotaMonthly: true } }),
+  ]);
+  const smsFor = (id: string) => smsCounts.find((s) => s.businessId === id)?._count.businessId ?? 0;
+  const quotaFor = (id: string) => settingsRows.find((s) => s.businessId === id)?.smsQuotaMonthly ?? 150;
 
   return (
     <div className="space-y-4">
@@ -18,7 +28,7 @@ export default async function AdminBusinessesPage() {
           <thead className="bg-zinc-900 text-left text-xs text-zinc-400">
             <tr>
               <th className="p-3">Nom</th><th className="p-3">Slug</th><th className="p-3">Email</th>
-              <th className="p-3">Stripe</th><th className="p-3">Bookings</th><th className="p-3">Flags</th><th className="p-3">Actions</th>
+              <th className="p-3">Stripe</th><th className="p-3">Bookings</th><th className="p-3">SMS mois</th><th className="p-3">Flags</th><th className="p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -29,6 +39,15 @@ export default async function AdminBusinessesPage() {
                 <td className="p-3 text-zinc-400">{b.email}</td>
                 <td className="p-3">{b.stripeConnected ? "✅" : b.stripeAccountId ? "⏳" : "—"}</td>
                 <td className="p-3">{b._count.bookings}</td>
+                <td className="p-3 text-xs">
+                  {(() => {
+                    const sent = smsFor(b.id); const quota = quotaFor(b.id);
+                    const over = Math.max(0, sent - quota);
+                    return over > 0
+                      ? <span className="text-amber-400">{sent}/{quota} (+{Math.ceil(over / 10)}€)</span>
+                      : <span>{sent}/{quota}</span>;
+                  })()}
+                </td>
                 <td className="p-3 text-xs">
                   {b.isTest && <span className="mr-1 rounded bg-amber-900 px-1.5 py-0.5">TEST</span>}
                   {!b.isActive && <span className="rounded bg-red-900 px-1.5 py-0.5">INACTIF</span>}
