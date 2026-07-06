@@ -2,6 +2,7 @@
 import { useActionState } from "react";
 import { upsertCustomer, upsertVehicle } from "../actions";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
+import { VehiclePicker } from "@/components/vehicle-picker";
 
 type Customer = { id: string; full_name: string; email: string | null; phone: string | null; notes: string | null };
 
@@ -32,10 +33,7 @@ export function VehicleForm({ customerId }: { customerId: string }) {
   return (
     <form action={formAction} className="space-y-3">
       <input type="hidden" name="customer_id" value={customerId} />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5"><Label>Marque</Label><Input name="make" required placeholder="Mercedes" /></div>
-        <div className="space-y-1.5"><Label>Modèle</Label><Input name="model" required placeholder="C220 CDI" /></div>
-      </div>
+      <VehiclePicker namePrefix="" />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5"><Label>Année</Label><Input name="year" type="number" min={1950} max={2035} /></div>
         <div className="space-y-1.5"><Label>Plaque</Label><Input name="plate" placeholder="AB-123-CD" /></div>

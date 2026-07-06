@@ -112,6 +112,31 @@ export async function createPublicBooking(slug: string, input: unknown) {
   }
   const addonsTotal = addons.reduce((s, a) => s + a.priceCents, 0);
 
+  // promo code: active, in window, under usage limit — scoped to this business
+  let promotion: { id: string; discountType: string; discountValue: number } | null = null;
+  if (d.promo_code) {
+    const code = d.promo_code.trim().toUpperCase();
+    const promo = await db.promotion.findUnique({
+      where: { businessId_code: { businessId: business.id, code } },
+      include: { _count: { select: { redemptions: true } } },
+    });
+    const now = new Date();
+    const valid = promo && promo.isActive
+      && (!promo.startsAt || promo.startsAt <= now)
+      && (!promo.endsAt || promo.endsAt >= now)
+      && (!promo.usageLimit || promo._count.redemptions < promo.usageLimit);
+    if (!valid) return { error: "Code promo invalide ou expiré." };
+    promotion = promo;
+  }
+
+  const grossTotal = service.priceCents + addonsTotal;
+  const discount = promotion
+    ? Math.min(grossTotal, promotion.discountType === "fixed"
+        ? promotion.discountValue
+        : Math.round((grossTotal * promotion.discountValue) / 100))
+    : 0;
+  const netTotal = grossTotal - discount;
+
   // Re-validate the requested slot server-side
   const starts = new Date(d.starts_at);
   const settings = await db.businessSettings.findUnique({ where: { businessId: business.id } });
@@ -127,10 +152,10 @@ export async function createPublicBooking(slug: string, input: unknown) {
   if (!ok) return { error: "Ce créneau n'est plus disponible. Choisis-en un autre." };
 
   const ends = addMinutes(starts, service.durationMinutes);
-  const deposit = computeDeposit({
+  const deposit = Math.min(netTotal, computeDeposit({
     deposit_required: service.depositRequired, deposit_type: service.depositType,
     deposit_value: service.depositValue, price_cents: service.priceCents,
-  });
+  }));
   const depositActive = deposit > 0 && business.stripeConnected && business.stripeAccountId;
 
   // upsert customer by email within this business
@@ -149,6 +174,18 @@ export async function createPublicBooking(slug: string, input: unknown) {
         },
       });
 
+  // explicit marketing/public-photos consent collected in the booking flow
+  if (d.consent_public_photos) {
+    await db.customerConsent.upsert({
+      where: { customerId_consentType: { customerId: customer.id, consentType: "public_photos" } },
+      create: {
+        businessId: business.id, customerId: customer.id, consentType: "public_photos",
+        granted: true, grantedAt: new Date(), source: "public_booking",
+      },
+      update: { granted: true, grantedAt: new Date(), revokedAt: null, source: "public_booking" },
+    });
+  }
+
   // reuse the customer's existing vehicle instead of duplicating it per booking
   const existingVehicle = await db.vehicle.findFirst({
     where: {
@@ -161,6 +198,7 @@ export async function createPublicBooking(slug: string, input: unknown) {
     data: {
       businessId: business.id, customerId: customer.id,
       make: d.vehicle_make, model: d.vehicle_model,
+      trim: d.vehicle_trim || null,
       year: d.vehicle_year || null, sizeCategory: d.vehicle_size ?? "other",
     },
   });
@@ -185,12 +223,19 @@ export async function createPublicBooking(slug: string, input: unknown) {
           customerId: customer.id, vehicleId: vehicle.id,
           status: "pending",
           startsAt: starts, endsAt: ends,
-          totalPriceCents: service.priceCents + addonsTotal,
+          totalPriceCents: netTotal,
           depositAmountCents: depositActive ? deposit : 0,
           depositPaid: false,
+          promotionId: promotion?.id ?? null,
+          discountCents: discount,
           notes: d.notes || null,
         },
       });
+      if (promotion) {
+        await tx.promotionRedemption.create({
+          data: { businessId: business.id, promotionId: promotion.id, bookingId: created.id },
+        });
+      }
       if (addons.length > 0) {
         // snapshot name+price so later addon edits don't rewrite history
         await tx.bookingAddon.createMany({
@@ -264,7 +309,7 @@ export async function createPublicBooking(slug: string, input: unknown) {
   const email = bookingConfirmationEmail({
     businessName: business.name, customerName: d.customer_name,
     serviceName: service.name, startsAt: starts.toISOString(), timezone: tz,
-    totalCents: service.priceCents + addonsTotal, depositCents: 0, cancelUrl,
+    totalCents: netTotal, depositCents: 0, cancelUrl,
   });
   await sendEmail({
     type: "booking_confirmation", to: d.customer_email, ...email,

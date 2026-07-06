@@ -121,6 +121,22 @@ export function rebookingEmail(args: {
   };
 }
 
+export function portalMagicLinkEmail(args: { businessName: string; loginUrl: string }) {
+  return {
+    subject: `Ton espace client — ${args.businessName}`,
+    html: layout(
+      `Connexion à ton espace client`,
+      `<p>Bonjour,</p>
+       <p>Clique sur le bouton ci-dessous pour accéder à ton espace client chez <strong>${args.businessName}</strong> (lien valable 15 minutes, utilisable une seule fois) :</p>
+       <p style="text-align:center;margin:20px 0;">
+         <a href="${args.loginUrl}" style="display:inline-block;background:#1e293b;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;">Accéder à mon espace</a>
+       </p>
+       <p>Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.</p>`,
+      `Espace client ${args.businessName}.`
+    ),
+  };
+}
+
 export function passwordResetEmail(resetUrl: string) {
   return {
     subject: "Réinitialise ton mot de passe DetailDesk",

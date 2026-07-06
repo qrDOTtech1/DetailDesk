@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { getAvailableSlots, createPublicBooking } from "./actions";
 import { computeDeposit, formatCents } from "@/lib/utils";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Textarea } from "@/components/ui";
+import { VehiclePicker } from "@/components/vehicle-picker";
 
 type Addon = { id: string; name: string; price_cents: number };
 type Service = {
@@ -13,8 +14,9 @@ type Service = {
   addons: Addon[];
 };
 
-export function BookingWizard({ slug, services, stripeConnected, cancellationPolicy }: {
+export function BookingWizard({ slug, services, stripeConnected, cancellationPolicy, prefill }: {
   slug: string; services: Service[]; stripeConnected: boolean; cancellationPolicy: string | null;
+  prefill?: { name?: string; email?: string; phone?: string; make?: string; model?: string };
 }) {
   const router = useRouter();
   const [step, setStep] = React.useState(1);
@@ -57,9 +59,12 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
       customer_phone: fd.get("customer_phone") ?? "",
       vehicle_make: fd.get("vehicle_make"),
       vehicle_model: fd.get("vehicle_model"),
+      vehicle_trim: fd.get("vehicle_trim") ?? "",
       vehicle_year: fd.get("vehicle_year") || "",
       vehicle_size: fd.get("vehicle_size") || "other",
       notes: fd.get("notes") ?? "",
+      promo_code: fd.get("promo_code") ?? "",
+      consent_public_photos: fd.get("consent_public_photos") === "on",
     });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
@@ -148,22 +153,33 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
           <CardContent>
             <form onSubmit={submit} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5"><Label>Nom complet</Label><Input name="customer_name" required /></div>
-                <div className="space-y-1.5"><Label>Email</Label><Input name="customer_email" type="email" required /></div>
+                <div className="space-y-1.5"><Label>Nom complet</Label>
+                  <Input name="customer_name" required defaultValue={prefill?.name ?? ""} /></div>
+                <div className="space-y-1.5"><Label>Email</Label>
+                  <Input name="customer_email" type="email" required defaultValue={prefill?.email ?? ""} /></div>
               </div>
-              <div className="space-y-1.5"><Label>Téléphone</Label><Input name="customer_phone" /></div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-1.5"><Label>Marque</Label><Input name="vehicle_make" required placeholder="BMW" /></div>
-                <div className="space-y-1.5"><Label>Modèle</Label><Input name="vehicle_model" required placeholder="M3" /></div>
-                <div className="space-y-1.5"><Label>Année</Label><Input name="vehicle_year" type="number" min={1950} max={2035} /></div>
+              <div className="space-y-1.5"><Label>Téléphone</Label>
+                <Input name="customer_phone" defaultValue={prefill?.phone ?? ""} /></div>
+
+              <VehiclePicker namePrefix="vehicle_"
+                defaultMake={prefill?.make ?? ""} defaultModel={prefill?.model ?? ""} />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5"><Label>Année (optionnel)</Label>
+                  <Input name="vehicle_year" type="number" min={1950} max={2035} /></div>
+                <div className="space-y-1.5">
+                  <Label>Gabarit</Label>
+                  <Select name="vehicle_size" defaultValue="sedan">
+                    <option value="compact">Citadine</option><option value="sedan">Berline</option>
+                    <option value="suv">SUV</option><option value="truck">Pickup</option>
+                    <option value="van">Van</option><option value="other">Autre</option>
+                  </Select>
+                </div>
               </div>
+
               <div className="space-y-1.5">
-                <Label>Gabarit</Label>
-                <Select name="vehicle_size" defaultValue="sedan">
-                  <option value="compact">Citadine</option><option value="sedan">Berline</option>
-                  <option value="suv">SUV</option><option value="truck">Pickup</option>
-                  <option value="van">Van</option><option value="other">Autre</option>
-                </Select>
+                <Label>Code promo (optionnel)</Label>
+                <Input name="promo_code" placeholder="BIENVENUE10" className="uppercase" />
               </div>
               <div className="space-y-1.5"><Label>Notes (optionnel)</Label>
                 <Textarea name="notes" placeholder="État du véhicule, demandes particulières…" /></div>
@@ -178,6 +194,14 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
                   : <p>Paiement sur place.</p>}
                 {cancellationPolicy && <p className="mt-1 text-xs text-muted-foreground">{cancellationPolicy}</p>}
               </div>
+
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" name="consent_public_photos" className="mt-0.5" />
+                <span>
+                  J&apos;accepte que des photos avant/après de mon véhicule puissent être utilisées
+                  dans la galerie publique du professionnel. (Optionnel, révocable à tout moment.)
+                </span>
+              </label>
 
               {error && <p className="text-sm text-destructive">{error}</p>}
               <Button type="submit" className="w-full" disabled={loading}>

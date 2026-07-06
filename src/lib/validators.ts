@@ -39,6 +39,7 @@ export const vehicleSchema = z.object({
   customer_id: z.string().uuid(),
   make: z.string().min(1).max(50),
   model: z.string().min(1).max(50),
+  trim: z.string().max(60).optional().or(z.literal("")),
   year: z.coerce.number().int().min(1950).max(2035).optional().or(z.literal("")),
   plate: z.string().max(20).optional().or(z.literal("")),
   size_category: z.enum(["compact", "sedan", "suv", "truck", "van", "other"]).optional(),
@@ -65,6 +66,7 @@ export const settingsSchema = z.object({
   confirmation_message: z.string().max(1000).optional().or(z.literal("")),
   reminder_message: z.string().max(1000).optional().or(z.literal("")),
   google_review_url: z.string().url("URL invalide").optional().or(z.literal("")),
+  show_public_gallery: z.coerce.boolean(),
 });
 
 export const addonSchema = z.object({
@@ -79,12 +81,27 @@ export const publicBookingSchema = z.object({
   customer_name: z.string().min(2).max(100),
   customer_email: z.string().email(),
   customer_phone: z.string().max(30).optional().or(z.literal("")),
-  vehicle_make: z.string().min(1).max(50),
-  vehicle_model: z.string().min(1).max(50),
+  vehicle_make: z.string().min(1, "Choisis la marque").max(50),
+  vehicle_model: z.string().min(1, "Indique le modèle").max(50),
+  vehicle_trim: z.string().max(60).optional().or(z.literal("")),
   vehicle_year: z.coerce.number().int().min(1950).max(2035).optional().or(z.literal("")),
   vehicle_size: z.enum(["compact", "sedan", "suv", "truck", "van", "other"]).optional(),
   notes: z.string().max(1000).optional().or(z.literal("")),
   addon_ids: z.array(z.string().uuid()).max(10).optional(),
+  promo_code: z.string().max(40).optional().or(z.literal("")),
+  consent_public_photos: z.coerce.boolean().optional(),
+});
+
+export const promotionSchema = z.object({
+  code: z.string().min(3, "Code trop court").max(30)
+    .regex(/^[A-Za-z0-9_-]+$/, "Lettres, chiffres, tirets uniquement"),
+  label: z.string().max(80).optional().or(z.literal("")),
+  discount_type: z.enum(["fixed", "percent"]),
+  discount_value: z.coerce.number().min(0.01).max(100_000), // euros or %
+  ends_at: z.string().optional().or(z.literal("")),
+  usage_limit: z.coerce.number().int().min(0).max(100_000), // 0 = unlimited
+}).refine((p) => p.discount_type !== "percent" || p.discount_value <= 100, {
+  message: "Une remise en % ne peut pas dépasser 100", path: ["discount_value"],
 });
 
 export const bookingStatusSchema = z.enum(["pending", "confirmed", "cancelled", "completed", "no_show"]);

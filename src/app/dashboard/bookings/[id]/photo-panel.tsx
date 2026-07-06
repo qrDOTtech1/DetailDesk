@@ -1,14 +1,17 @@
 "use client";
 import { useActionState } from "react";
-import { uploadBookingPhoto, deleteBookingPhoto } from "../../actions";
-import { Button, Card, CardContent, CardHeader, CardTitle, Label, Select } from "@/components/ui";
+import { uploadBookingPhoto, deleteBookingPhoto, togglePhotoShare } from "../../actions";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from "@/components/ui";
 
-type Photo = { id: string; kind: "before" | "after" };
+type Photo = { id: string; kind: "before" | "after" | "general"; isShareable: boolean };
 
-export function PhotoPanel({ bookingId, photos }: { bookingId: string; photos: Photo[] }) {
+export function PhotoPanel({ bookingId, photos, consentGranted }: {
+  bookingId: string; photos: Photo[]; consentGranted: boolean;
+}) {
   const [state, formAction, pending] = useActionState(uploadBookingPhoto, null);
   const before = photos.filter((p) => p.kind === "before");
   const after = photos.filter((p) => p.kind === "after");
+  const general = photos.filter((p) => p.kind === "general");
 
   const Gallery = ({ title, items }: { title: string; items: Photo[] }) => (
     <div>
@@ -27,6 +30,13 @@ export function PhotoPanel({ bookingId, photos }: { bookingId: string; photos: P
                 <button type="submit" title="Supprimer"
                   className="rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">×</button>
               </form>
+              <form action={togglePhotoShare} className="absolute bottom-1 left-1 right-1">
+                <input type="hidden" name="id" value={p.id} />
+                <button type="submit" title={consentGranted ? "" : "Le client n'a pas donné son accord — la photo ne sera pas publiée même si partagée"}
+                  className={`w-full rounded px-1 py-0.5 text-[10px] ${p.isShareable ? "bg-emerald-600/90 text-white" : "bg-black/50 text-white opacity-0 group-hover:opacity-100"}`}>
+                  {p.isShareable ? (consentGranted ? "Publique ✓" : "Partagée (accord manquant)") : "Publier dans la galerie"}
+                </button>
+              </form>
             </div>
           ))}
         </div>
@@ -38,8 +48,15 @@ export function PhotoPanel({ bookingId, photos }: { bookingId: string; photos: P
     <Card>
       <CardHeader><CardTitle>Photos avant / après</CardTitle></CardHeader>
       <CardContent className="space-y-4">
+        {!consentGranted && photos.some((p) => p.isShareable) && (
+          <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+            ⚠️ Ce client n&apos;a pas donné son accord photos publiques : les photos marquées
+            &quot;partagées&quot; ne sont PAS visibles dans la galerie publique.
+          </p>
+        )}
         <Gallery title="Avant" items={before} />
         <Gallery title="Après" items={after} />
+        {general.length > 0 && <Gallery title="Autres" items={general} />}
         <form action={formAction} className="space-y-2 border-t pt-3">
           <input type="hidden" name="booking_id" value={bookingId} />
           <div className="flex items-end gap-2">
@@ -53,10 +70,12 @@ export function PhotoPanel({ bookingId, photos }: { bookingId: string; photos: P
               <Select name="kind" defaultValue="before">
                 <option value="before">Avant</option>
                 <option value="after">Après</option>
+                <option value="general">Autre</option>
               </Select>
             </div>
             <Button type="submit" size="sm" disabled={pending}>{pending ? "…" : "Ajouter"}</Button>
           </div>
+          <Input name="caption" placeholder="Légende (optionnel)" className="h-8 text-xs" />
           {state?.error && <p className="text-xs text-destructive">{state.error}</p>}
           {state?.success && <p className="text-xs text-emerald-600">{state.success}</p>}
         </form>

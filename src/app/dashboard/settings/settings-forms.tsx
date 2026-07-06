@@ -11,6 +11,7 @@ type Settings = {
   timezone: string; reminder_hours_before: number; booking_notice_hours: number;
   buffer_minutes: number; confirmation_message: string | null; reminder_message: string | null;
   google_review_url: string | null;
+  show_public_gallery: boolean;
 } | null;
 
 export function BusinessSettingsForm({ business }: { business: Business }) {
@@ -64,6 +65,17 @@ export function BookingSettingsForm({ settings }: { settings: Settings }) {
         <p className="text-xs text-muted-foreground">
           Si renseigné, tes clients reçoivent automatiquement une demande d&apos;avis après chaque prestation terminée.
         </p>
+      </div>
+      <div className="flex items-start gap-2">
+        <input id="show_public_gallery" type="checkbox" name="show_public_gallery"
+          defaultChecked={settings?.show_public_gallery ?? false} className="mt-0.5" />
+        <div>
+          <Label htmlFor="show_public_gallery">Galerie publique &quot;Nos réalisations&quot;</Label>
+          <p className="text-xs text-muted-foreground">
+            Affiche sur ta page de réservation les photos que tu as marquées publiques,
+            uniquement pour les clients ayant donné leur accord.
+          </p>
+        </div>
       </div>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
       {state?.success && <p className="text-sm text-emerald-600">{state.success}</p>}

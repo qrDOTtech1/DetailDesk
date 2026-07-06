@@ -22,10 +22,14 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
     include: {
       service: true, customer: true, vehicle: true,
       bookingAddons: true,
-      photos: { select: { id: true, kind: true }, orderBy: { createdAt: "asc" } },
+      photos: { select: { id: true, kind: true, isShareable: true }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!booking) notFound();
+
+  const consent = await db.customerConsent.findUnique({
+    where: { customerId_consentType: { customerId: booking.customerId, consentType: "public_photos" } },
+  });
 
   const [settings, history, payments] = await Promise.all([
     db.businessSettings.findUnique({ where: { businessId: ctx.business.id }, select: { timezone: true } }),
@@ -108,8 +112,8 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
-      <PhotoPanel bookingId={booking.id}
-        photos={booking.photos.map((p) => ({ id: p.id, kind: p.kind }))} />
+      <PhotoPanel bookingId={booking.id} consentGranted={Boolean(consent?.granted)}
+        photos={booking.photos.map((p) => ({ id: p.id, kind: p.kind, isShareable: p.isShareable }))} />
     </div>
   );
 }

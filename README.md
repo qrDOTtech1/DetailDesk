@@ -164,6 +164,18 @@ UPDATE profiles SET platform_role = 'platform_admin' WHERE email = '...';
 - **Demande d'avis Google** : renseigne ton lien d'avis dans Réglages ; chaque client reçoit une demande d'avis automatique après une prestation marquée terminée (une seule fois par réservation).
 - **Photos avant / après** : upload sur la fiche réservation (JPEG/PNG/WebP, 2 Mo max, 12 par réservation), stockées en base, servies via une route authentifiée réservée au business (et admin).
 
+### V1.5 CRM (2e vague)
+
+- **Sélection véhicule par logo** : 387 logos de marques embarqués (`/public/car-logos`), flow logo → modèle (autocomplete API NHTSA gratuite, fallback saisie libre) → finition. Utilisé sur la page publique ET le dashboard pro ; cards véhicules avec logo.
+- **Portail client léger** (magic link email, sans mot de passe) : `/b/<slug>/portail` → lien à usage unique 15 min → session cookie séparée scoped client+business (zéro fuite cross-tenant). Le client voit ses RDV, véhicules, photos, promos, et gère son consentement.
+- **Consentement photos publiques** : stocké en base (date, source, révocable), collecté dans le flow de réservation, la fiche client pro, ou le portail. Une photo n'est publique que si le pro la marque partageable ET que le consentement est actif — re-vérifié à chaque requête.
+- **Galerie publique "Nos réalisations"** : activable dans Réglages, affichée sur la page de réservation.
+- **Codes promo** : fixe ou %, date d'expiration, limite d'usage, gérés dans Réglages ; saisie sur la page publique, remise snapshotée sur la réservation.
+- **Fidélité simple** : statut calculé (nouveau/régulier/fidèle) + tag VIP manuel.
+- **Fiche client enrichie** : total dépensé, dernière visite, prestations terminées, lien de rebooking prérempli à copier/envoyer.
+- **Recherche réservations** : par client, email, véhicule, plaque, service + plage de dates.
+- **Rebooking 1 clic** : bouton dans le portail + lien prérempli côté pro (les infos client pré-remplissent le wizard via l'URL).
+
 ## 7. Roadmap V2
 
 - Comptes staff + invitations

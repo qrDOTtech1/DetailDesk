@@ -61,6 +61,12 @@ enum EmailType {
 enum PhotoKind {
   before
   after
+  general
+}
+
+enum DiscountType {
+  fixed
+  percent
 }
 
 enum SizeCategory {
@@ -178,10 +184,14 @@ model Customer {
   email      String?
   phone      String?
   notes      String?
+  isVip      Boolean  @default(false) @map("is_vip")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  vehicles Vehicle[]
-  bookings Booking[]
+  vehicles     Vehicle[]
+  bookings     Booking[]
+  consents     CustomerConsent[]
+  portalTokens PortalLoginToken[]
+  photos       BookingPhoto[]
 
   @@index([businessId])
   @@map("customers")
@@ -195,6 +205,7 @@ model Vehicle {
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   make         String
   model        String
+  trim         String?
   year         Int?
   plate        String?
   sizeCategory SizeCategory? @map("size_category")
@@ -202,6 +213,7 @@ model Vehicle {
   createdAt    DateTime @default(now()) @map("created_at")
 
   bookings Booking[]
+  photos   BookingPhoto[]
 
   @@index([businessId])
   @@index([customerId])
@@ -228,6 +240,9 @@ model Booking {
   notes               String?
   reviewRequestSentAt      DateTime? @map("review_request_sent_at")
   rebookingReminderSentAt  DateTime? @map("rebooking_reminder_sent_at")
+  promotionId         String?  @map("promotion_id")
+  promotion           Promotion? @relation(fields: [promotionId], references: [id])
+  discountCents       Int      @default(0) @map("discount_cents")
   createdAt           DateTime @default(now()) @map("created_at")
 
   statusHistory BookingStatusHistory[]
@@ -313,6 +328,7 @@ model BusinessSettings {
   bookingNoticeHours    Int      @default(12) @map("booking_notice_hours")
   bufferMinutes         Int      @default(15) @map("buffer_minutes")
   googleReviewUrl       String?  @map("google_review_url")
+  showPublicGallery     Boolean  @default(false) @map("show_public_gallery")
   confirmationMessage   String?  @map("confirmation_message")
   reminderMessage       String?  @map("reminder_message")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -367,15 +383,90 @@ model BookingAddon {
 model BookingPhoto {
   id         String    @id @default(uuid())
   businessId String    @map("business_id")
-  bookingId  String    @map("booking_id")
-  booking    Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId  String?   @map("booking_id")
+  booking    Booking?  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vehicleId  String?   @map("vehicle_id")
+  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
   kind       PhotoKind
+  caption    String?
+  sortOrder  Int       @default(0) @map("sort_order")
+  // public only if BOTH flags AND active customer public_photos consent
+  isShareable     Boolean @default(false) @map("is_shareable")
+  isPublicVisible Boolean @default(false) @map("is_public_visible")
   mime       String
   data       Bytes
   createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([bookingId])
+  @@index([vehicleId])
+  @@index([businessId])
   @@map("booking_photos")
+}
+
+model CustomerConsent {
+  id          String    @id @default(uuid())
+  businessId  String    @map("business_id")
+  customerId  String    @map("customer_id")
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  consentType String    @map("consent_type") // "public_photos" | "marketing"
+  granted     Boolean   @default(false)
+  grantedAt   DateTime? @map("granted_at")
+  revokedAt   DateTime? @map("revoked_at")
+  source      String?   // "public_booking" | "pro_dashboard" | "portal"
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([customerId, consentType])
+  @@index([businessId])
+  @@map("customer_consents")
+}
+
+model PortalLoginToken {
+  id         String    @id @default(uuid())
+  token      String    @unique
+  businessId String    @map("business_id")
+  customerId String    @map("customer_id")
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("portal_login_tokens")
+}
+
+model Promotion {
+  id            String       @id @default(uuid())
+  businessId    String       @map("business_id")
+  code          String
+  label         String?
+  discountType  DiscountType @map("discount_type")
+  discountValue Int          @map("discount_value") // cents (fixed) or % (percent)
+  isActive      Boolean      @default(true) @map("is_active")
+  startsAt      DateTime?    @map("starts_at")
+  endsAt        DateTime?    @map("ends_at")
+  usageLimit    Int?         @map("usage_limit")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  bookings    Booking[]
+  redemptions PromotionRedemption[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("promotions")
+}
+
+model PromotionRedemption {
+  id          String    @id @default(uuid())
+  businessId  String    @map("business_id")
+  promotionId String    @map("promotion_id")
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  bookingId   String    @map("booking_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([promotionId])
+  @@map("promotion_redemptions")
 }
 
 model BookingReminder {

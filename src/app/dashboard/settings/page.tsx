@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { refreshStripeStatus, connectStripe } from "../actions";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui";
 import { BusinessSettingsForm, BookingSettingsForm } from "./settings-forms";
+import { PromoManager } from "./promo-manager";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ stripe?: string }> }) {
   const { stripe: stripeParam } = await searchParams;
@@ -13,7 +14,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     await refreshStripeStatus();
   }
 
-  const settings = await db.businessSettings.findUnique({ where: { businessId: ctx.business.id } });
+  const [settings, promos] = await Promise.all([
+    db.businessSettings.findUnique({ where: { businessId: ctx.business.id } }),
+    db.promotion.findMany({
+      where: { businessId: ctx.business.id },
+      include: { _count: { select: { redemptions: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -68,10 +76,28 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               confirmation_message: settings.confirmationMessage,
               reminder_message: settings.reminderMessage,
               google_review_url: settings.googleReviewUrl,
+              show_public_gallery: settings.showPublicGallery,
             } : null} />
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Codes promo</CardTitle>
+          <CardDescription>
+            Tes clients saisissent le code sur ta page de réservation — la remise s&apos;applique au total.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PromoManager promos={promos.map((p) => ({
+            id: p.id, code: p.code, label: p.label,
+            discount_type: p.discountType, discount_value: p.discountValue,
+            is_active: p.isActive, ends_at: p.endsAt?.toISOString() ?? null,
+            usage_limit: p.usageLimit, redemptions: p._count.redemptions,
+          }))} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
