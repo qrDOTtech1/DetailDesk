@@ -57,6 +57,11 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
           </form>
         ))}
         {["pending", "confirmed"].includes(booking.status) && <RescheduleForm bookingId={booking.id} />}
+        {booking.status === "completed" && (
+          <Link href={`/dashboard/invoices/new?booking_id=${booking.id}`}>
+            <Button variant="outline" size="sm">Facturer</Button>
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

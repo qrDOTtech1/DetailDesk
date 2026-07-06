@@ -57,12 +57,26 @@ enum EmailType {
   review_request
   rebooking_reminder
   new_booking_pro
+  invoice_sent
 }
 
 enum PhotoKind {
   before
   after
   general
+}
+
+enum BusinessPhotoKind {
+  logo
+  cover
+  gallery
+}
+
+enum InvoiceStatus {
+  draft
+  issued
+  paid
+  cancelled
 }
 
 enum DiscountType {
@@ -115,7 +129,13 @@ model Business {
   address             String?
   businessType        BusinessType @default(studio) @map("business_type")
   logoUrl             String?  @map("logo_url")
+  coverPhotoUrl       String?  @map("cover_photo_url")
+  description         String?
   cancellationPolicy  String?  @map("cancellation_policy")
+  // invoicing (French micro-entreprise friendly: VAT-exempt by default)
+  siret               String?
+  vatNumber           String?  @map("vat_number")
+  invoiceNextNumber   Int      @default(1) @map("invoice_next_number")
   stripeAccountId     String?  @map("stripe_account_id")
   stripeConnected     Boolean  @default(false) @map("stripe_connected")
   // platform subscription (Stripe Billing on the PLATFORM account)
@@ -138,8 +158,66 @@ model Business {
   blockedSlots       BlockedSlot[]
   settings           BusinessSettings?
   emailLogs          EmailLog[]
+  businessPhotos     BusinessPhoto[]
+  invoices           Invoice[]
 
   @@map("businesses")
+}
+
+model BusinessPhoto {
+  id         String            @id @default(uuid())
+  businessId String            @map("business_id")
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind       BusinessPhotoKind
+  caption    String?
+  sortOrder  Int               @default(0) @map("sort_order")
+  mime       String
+  data       Bytes
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  @@index([businessId, kind])
+  @@map("business_photos")
+}
+
+model Invoice {
+  id           String        @id @default(uuid())
+  businessId   String        @map("business_id")
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId   String        @map("customer_id")
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  bookingId    String?       @map("booking_id")
+  booking      Booking?      @relation(fields: [bookingId], references: [id])
+  // null while draft — assigned atomically when issued, e.g. "2026-0007"
+  number       String?
+  status       InvoiceStatus @default(draft)
+  issueDate    DateTime?     @map("issue_date")
+  dueDate      DateTime?     @map("due_date")
+  subtotalCents Int          @default(0) @map("subtotal_cents")
+  taxRatePercent Int         @default(0) @map("tax_rate_percent")
+  taxCents     Int           @default(0) @map("tax_cents")
+  totalCents   Int           @default(0) @map("total_cents")
+  notes        String?
+  paidAt       DateTime?     @map("paid_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  lines InvoiceLine[]
+
+  @@unique([businessId, number])
+  @@index([businessId, status])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String  @id @default(uuid())
+  invoiceId      String  @map("invoice_id")
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description    String
+  quantity       Int     @default(1)
+  unitPriceCents Int     @map("unit_price_cents")
+  totalCents     Int     @map("total_cents")
+  sortOrder      Int     @default(0) @map("sort_order")
+
+  @@map("invoice_lines")
 }
 
 model BusinessMember {
@@ -197,6 +275,7 @@ model Customer {
   consents     CustomerConsent[]
   portalTokens PortalLoginToken[]
   photos       BookingPhoto[]
+  invoices     Invoice[]
 
   @@index([businessId])
   @@map("customers")
@@ -255,6 +334,7 @@ model Booking {
   reminder      BookingReminder?
   bookingAddons BookingAddon[]
   photos        BookingPhoto[]
+  invoices      Invoice[]
 
   @@index([businessId])
   @@index([businessId, startsAt])

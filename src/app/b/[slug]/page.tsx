@@ -14,11 +14,19 @@ export default async function PublicBookingPage({ params, searchParams }: {
     where: { slug, isActive: true },
     select: {
       id: true, name: true, slug: true, email: true, phone: true, address: true,
-      logoUrl: true, cancellationPolicy: true, stripeConnected: true, businessType: true,
+      logoUrl: true, coverPhotoUrl: true, description: true,
+      cancellationPolicy: true, stripeConnected: true, businessType: true,
       settings: { select: { showPublicGallery: true } },
     },
   });
   if (!business) notFound();
+
+  const shopPhotos = await db.businessPhoto.findMany({
+    where: { businessId: business.id, kind: "gallery" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, caption: true },
+    take: 12,
+  });
 
   // public gallery: only shareable+visible photos of consenting customers
   let galleryPhotos: { id: string; kind: string; caption: string | null }[] = [];
@@ -60,17 +68,38 @@ export default async function PublicBookingPage({ params, searchParams }: {
 
   return (
     <main className="min-h-screen bg-muted/40">
+      {business.coverPhotoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={business.coverPhotoUrl} alt="" className="h-40 w-full object-cover sm:h-56" />
+      )}
       <div className="mx-auto max-w-xl px-4 py-8">
-        <header className="mb-6 text-center">
+        <header className={`mb-6 text-center ${business.coverPhotoUrl ? "-mt-14" : ""}`}>
           {business.logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={business.logoUrl} alt={business.name} className="mx-auto mb-3 h-16 w-16 rounded-full object-cover" />
+            <img src={business.logoUrl} alt={business.name}
+              className="mx-auto mb-3 h-16 w-16 rounded-full border-4 border-background object-cover shadow-sm" />
           )}
           <h1 className="text-2xl font-bold">{business.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {[business.address, business.phone, business.email].filter(Boolean).join(" · ")}
           </p>
+          {business.description && (
+            <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">{business.description}</p>
+          )}
         </header>
+
+        {shopPhotos.length > 0 && (
+          <section className="mb-8">
+            <div className="grid grid-cols-4 gap-2">
+              {shopPhotos.map((p) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={p.id} src={`/api/business-photos/${p.id}`} alt={p.caption ?? "Atelier"}
+                  className="aspect-square w-full rounded-md border object-cover" loading="lazy" />
+              ))}
+            </div>
+          </section>
+        )}
+
         <BookingWizard
           slug={business.slug}
           services={services.map((s) => ({

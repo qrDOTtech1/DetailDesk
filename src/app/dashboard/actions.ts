@@ -635,6 +635,97 @@ export async function connectStripe() {
   redirect(link.url);
 }
 
+/* ─────────── BUSINESS PROFILE (photos + description) ─────────── */
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const MAX_COVER_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_MIME = ["image/jpeg", "image/png", "image/webp"];
+
+const businessProfileSchema = z.object({
+  description: z.string().max(2000).optional().or(z.literal("")),
+  siret: z.string().max(20).optional().or(z.literal("")),
+  vat_number: z.string().max(30).optional().or(z.literal("")),
+});
+
+export async function updateBusinessProfile(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const parsed = businessProfileSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await db.business.update({
+    where: { id: ctx.business.id },
+    data: {
+      description: parsed.data.description || null,
+      siret: parsed.data.siret || null,
+      vatNumber: parsed.data.vat_number || null,
+    },
+  });
+  revalidatePath("/dashboard/settings");
+  return { success: "Profil enregistré." };
+}
+
+/** Uploads a logo or cover photo — only one active at a time per kind. */
+export async function uploadBusinessBrandPhoto(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const kind = String(formData.get("kind")) === "cover" ? "cover" as const : "logo" as const;
+  const file = formData.get("photo");
+  const maxBytes = kind === "cover" ? MAX_COVER_BYTES : MAX_LOGO_BYTES;
+
+  if (!(file instanceof File) || file.size === 0) return { error: "Choisis une image." };
+  if (file.size > maxBytes) return { error: `Image trop lourde (max ${maxBytes / 1024 / 1024} Mo).` };
+  if (!ALLOWED_IMAGE_MIME.includes(file.type)) return { error: "Format non supporté (JPEG, PNG ou WebP)." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  await db.$transaction(async (tx) => {
+    await tx.businessPhoto.deleteMany({ where: { businessId: ctx.business.id, kind } });
+    const photo = await tx.businessPhoto.create({
+      data: { businessId: ctx.business.id, kind, mime: file.type, data: bytes },
+    });
+    await tx.business.update({
+      where: { id: ctx.business.id },
+      data: kind === "cover"
+        ? { coverPhotoUrl: `/api/business-photos/${photo.id}` }
+        : { logoUrl: `/api/business-photos/${photo.id}` },
+    });
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { success: kind === "cover" ? "Photo de couverture mise à jour." : "Logo mis à jour." };
+}
+
+export async function uploadGalleryPhoto(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const file = formData.get("photo");
+  const caption = String(formData.get("caption") ?? "").slice(0, 120) || null;
+
+  if (!(file instanceof File) || file.size === 0) return { error: "Choisis une image." };
+  if (file.size > MAX_COVER_BYTES) return { error: "Image trop lourde (max 5 Mo)." };
+  if (!ALLOWED_IMAGE_MIME.includes(file.type)) return { error: "Format non supporté (JPEG, PNG ou WebP)." };
+
+  const count = await db.businessPhoto.count({ where: { businessId: ctx.business.id, kind: "gallery" } });
+  if (count >= 20) return { error: "Maximum 20 photos dans la galerie de l'atelier." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  await db.businessPhoto.create({
+    data: { businessId: ctx.business.id, kind: "gallery", caption, mime: file.type, data: bytes },
+  });
+  revalidatePath("/dashboard/settings");
+  return { success: "Photo ajoutée à la galerie." };
+}
+
+export async function deleteBusinessPhoto(formData: FormData) {
+  const ctx = await requireBusiness();
+  const id = String(formData.get("id"));
+  const photo = await db.businessPhoto.findFirst({ where: { id, businessId: ctx.business.id } });
+  if (!photo) return;
+  await db.businessPhoto.deleteMany({ where: { id, businessId: ctx.business.id } });
+  if (photo.kind === "logo") {
+    await db.business.update({ where: { id: ctx.business.id }, data: { logoUrl: null } });
+  } else if (photo.kind === "cover") {
+    await db.business.update({ where: { id: ctx.business.id }, data: { coverPhotoUrl: null } });
+  }
+  revalidatePath("/dashboard/settings");
+}
+
 /* ─────────── REFUND ─────────── */
 
 /** Refunds the deposit of a booking on the PRO's connected account. */

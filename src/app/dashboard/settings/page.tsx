@@ -2,9 +2,10 @@ import { requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { refreshStripeStatus, connectStripe, toggleSmsReminders, startSubscription, openBillingPortal } from "../actions";
 import { getSmsUsage } from "@/lib/sms";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Label } from "@/components/ui";
 import { BusinessSettingsForm, BookingSettingsForm } from "./settings-forms";
 import { PromoManager } from "./promo-manager";
+import { ShopProfileForm, LogoCoverUpload, GalleryManager } from "./shop-profile";
 
 async function SmsUsage({ businessId, quota }: { businessId: string; quota: number }) {
   const usage = await getSmsUsage(businessId, quota);
@@ -33,12 +34,21 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     await refreshStripeStatus();
   }
 
-  const [settings, promos] = await Promise.all([
+  const [settings, promos, business, galleryPhotos] = await Promise.all([
     db.businessSettings.findUnique({ where: { businessId: ctx.business.id } }),
     db.promotion.findMany({
       where: { businessId: ctx.business.id },
       include: { _count: { select: { redemptions: true } } },
       orderBy: { createdAt: "desc" },
+    }),
+    db.business.findUnique({
+      where: { id: ctx.business.id },
+      select: { description: true, siret: true, vatNumber: true, logoUrl: true, coverPhotoUrl: true },
+    }),
+    db.businessPhoto.findMany({
+      where: { businessId: ctx.business.id, kind: "gallery" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, caption: true },
     }),
   ]);
 
@@ -149,6 +159,27 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </Button>
           </form>
           <SmsUsage businessId={ctx.business.id} quota={settings?.smsQuotaMonthly ?? 150} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profil de l&apos;atelier</CardTitle>
+          <CardDescription>
+            Logo, photo de couverture, description et galerie — affichés sur ta page de réservation publique.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <LogoCoverUpload logoUrl={business?.logoUrl ?? null} coverUrl={business?.coverPhotoUrl ?? null} />
+          <ShopProfileForm profile={{
+            description: business?.description ?? null,
+            siret: business?.siret ?? null,
+            vat_number: business?.vatNumber ?? null,
+          }} />
+          <div>
+            <Label className="mb-2 block">Galerie de l&apos;atelier</Label>
+            <GalleryManager photos={galleryPhotos} />
+          </div>
         </CardContent>
       </Card>
 

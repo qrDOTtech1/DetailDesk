@@ -123,6 +123,9 @@ export function StatusBadge({ status }: { status: string }) {
     no_show: { label: "No-show", variant: "muted" },
     succeeded: { label: "Payé", variant: "success" },
     failed: { label: "Échec", variant: "destructive" },
+    draft: { label: "Brouillon", variant: "muted" },
+    issued: { label: "Émise", variant: "warning" },
+    paid: { label: "Payée", variant: "success" },
   };
   const s = map[status] ?? { label: status, variant: "outline" };
   return <Badge variant={s.variant}>{s.label}</Badge>;

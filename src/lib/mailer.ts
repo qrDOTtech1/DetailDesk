@@ -9,7 +9,8 @@ export type EmailType =
   | "booking_cancelled"
   | "review_request"
   | "rebooking_reminder"
-  | "new_booking_pro";
+  | "new_booking_pro"
+  | "invoice_sent";
 
 type SendArgs = {
   type: EmailType;

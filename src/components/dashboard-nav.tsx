@@ -7,6 +7,7 @@ const items = [
   ["/dashboard", "Aperçu"],
   ["/dashboard/calendar", "Planning"],
   ["/dashboard/bookings", "Réservations"],
+  ["/dashboard/invoices", "Factures"],
   ["/dashboard/services", "Services"],
   ["/dashboard/customers", "Clients"],
   ["/dashboard/availability", "Disponibilités"],
