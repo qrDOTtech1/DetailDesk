@@ -20,6 +20,10 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
     select: {
       id: true, name: true, description: true, category: true, priceCents: true,
       durationMinutes: true, depositRequired: true, depositType: true, depositValue: true,
+      addons: {
+        where: { isActive: true }, orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, priceCents: true },
+      },
     },
   });
 
@@ -42,6 +46,7 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
             id: s.id, name: s.name, description: s.description, category: s.category,
             price_cents: s.priceCents, duration_minutes: s.durationMinutes,
             deposit_required: s.depositRequired, deposit_type: s.depositType, deposit_value: s.depositValue,
+            addons: s.addons.map((a) => ({ id: a.id, name: a.name, price_cents: a.priceCents })),
           }))}
           stripeConnected={business.stripeConnected}
           cancellationPolicy={business.cancellationPolicy}

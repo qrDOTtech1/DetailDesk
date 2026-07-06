@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState } from "@/components/ui";
 import { ServiceForm, ServiceRowActions } from "./service-form";
+import { AddonManager } from "./addon-manager";
 
 const catLabels: Record<string, string> = {
   interior: "Intérieur", exterior: "Extérieur", polish: "Polissage",
@@ -13,6 +14,7 @@ export default async function ServicesPage() {
   const ctx = await requireBusiness();
   const services = await db.service.findMany({
     where: { businessId: ctx.business.id }, orderBy: { createdAt: "asc" },
+    include: { addons: { where: { isActive: true }, orderBy: { createdAt: "asc" } } },
   });
 
   return (
@@ -39,7 +41,10 @@ export default async function ServicesPage() {
                   price_cents: s.priceCents, duration_minutes: s.durationMinutes,
                   deposit_required: s.depositRequired, deposit_type: s.depositType,
                   deposit_value: s.depositValue, is_active: s.isActive,
+                  rebook_after_days: s.rebookAfterDays,
                 }} />
+                <AddonManager serviceId={s.id}
+                  addons={s.addons.map((a) => ({ id: a.id, name: a.name, price_cents: a.priceCents }))} />
               </CardContent>
             </Card>
           ))

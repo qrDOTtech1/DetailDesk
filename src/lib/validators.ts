@@ -21,6 +21,7 @@ export const serviceSchema = z.object({
   deposit_required: z.coerce.boolean(),
   deposit_type: z.enum(["fixed", "percent"]),
   deposit_value: z.coerce.number().min(0).max(100_000), // euros (fixed) or % (percent)
+  rebook_after_days: z.coerce.number().int().min(0).max(365), // 0 = disabled
   is_active: z.coerce.boolean(),
 }).refine((s) => s.deposit_type !== "percent" || s.deposit_value <= 100, {
   message: "Un acompte en % ne peut pas dépasser 100",
@@ -63,6 +64,13 @@ export const settingsSchema = z.object({
   buffer_minutes: z.coerce.number().int().min(0).max(240),
   confirmation_message: z.string().max(1000).optional().or(z.literal("")),
   reminder_message: z.string().max(1000).optional().or(z.literal("")),
+  google_review_url: z.string().url("URL invalide").optional().or(z.literal("")),
+});
+
+export const addonSchema = z.object({
+  service_id: z.string().uuid(),
+  name: z.string().min(2, "Nom trop court").max(80),
+  price_euros: z.coerce.number().min(0).max(10_000),
 });
 
 export const publicBookingSchema = z.object({
@@ -76,6 +84,7 @@ export const publicBookingSchema = z.object({
   vehicle_year: z.coerce.number().int().min(1950).max(2035).optional().or(z.literal("")),
   vehicle_size: z.enum(["compact", "sedan", "suv", "truck", "van", "other"]).optional(),
   notes: z.string().max(1000).optional().or(z.literal("")),
+  addon_ids: z.array(z.string().uuid()).max(10).optional(),
 });
 
 export const bookingStatusSchema = z.enum(["pending", "confirmed", "cancelled", "completed", "no_show"]);

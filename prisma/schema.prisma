@@ -54,6 +54,13 @@ enum EmailType {
   payment_confirmation
   booking_reminder
   booking_cancelled
+  review_request
+  rebooking_reminder
+}
+
+enum PhotoKind {
+  before
+  after
 }
 
 enum SizeCategory {
@@ -152,9 +159,12 @@ model Service {
   depositType      DepositType @default(fixed) @map("deposit_type")
   depositValue     Int      @default(0) @map("deposit_value")
   isActive         Boolean  @default(true) @map("is_active")
+  // send an automatic "time to rebook" email N days after completion
+  rebookAfterDays  Int?     @map("rebook_after_days")
   createdAt        DateTime @default(now()) @map("created_at")
 
   bookings Booking[]
+  addons   ServiceAddon[]
 
   @@index([businessId])
   @@map("services")
@@ -216,11 +226,15 @@ model Booking {
   depositPaid         Boolean  @default(false) @map("deposit_paid")
   publicCancelToken   String   @unique @default(uuid()) @map("public_cancel_token")
   notes               String?
+  reviewRequestSentAt      DateTime? @map("review_request_sent_at")
+  rebookingReminderSentAt  DateTime? @map("rebooking_reminder_sent_at")
   createdAt           DateTime @default(now()) @map("created_at")
 
   statusHistory BookingStatusHistory[]
   payments      Payment[]
   reminder      BookingReminder?
+  bookingAddons BookingAddon[]
+  photos        BookingPhoto[]
 
   @@index([businessId])
   @@index([businessId, startsAt])
@@ -298,6 +312,7 @@ model BusinessSettings {
   reminderHoursBefore   Int      @default(24) @map("reminder_hours_before")
   bookingNoticeHours    Int      @default(12) @map("booking_notice_hours")
   bufferMinutes         Int      @default(15) @map("buffer_minutes")
+  googleReviewUrl       String?  @map("google_review_url")
   confirmationMessage   String?  @map("confirmation_message")
   reminderMessage       String?  @map("reminder_message")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -319,6 +334,48 @@ model EmailLog {
 
   @@index([businessId])
   @@map("email_logs")
+}
+
+model ServiceAddon {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  serviceId  String   @map("service_id")
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name       String
+  priceCents Int      @map("price_cents")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@index([serviceId])
+  @@map("service_addons")
+}
+
+model BookingAddon {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  bookingId  String   @map("booking_id")
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  // snapshot at booking time — addon price changes must not rewrite history
+  name       String
+  priceCents Int      @map("price_cents")
+
+  @@index([bookingId])
+  @@map("booking_addons")
+}
+
+model BookingPhoto {
+  id         String    @id @default(uuid())
+  businessId String    @map("business_id")
+  bookingId  String    @map("booking_id")
+  booking    Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  kind       PhotoKind
+  mime       String
+  data       Bytes
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([bookingId])
+  @@map("booking_photos")
 }
 
 model BookingReminder {

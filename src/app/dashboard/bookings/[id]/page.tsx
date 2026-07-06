@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { updateBookingStatus } from "../../actions";
 import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@/components/ui";
+import { PhotoPanel } from "./photo-panel";
 
 const transitions: Record<string, [string, string][]> = {
   pending: [["confirmed", "Confirmer"], ["cancelled", "Annuler"]],
@@ -18,7 +19,11 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
 
   const booking = await db.booking.findFirst({
     where: { id, businessId: ctx.business.id },
-    include: { service: true, customer: true, vehicle: true },
+    include: {
+      service: true, customer: true, vehicle: true,
+      bookingAddons: true,
+      photos: { select: { id: true, kind: true }, orderBy: { createdAt: "asc" } },
+    },
   });
   if (!booking) notFound();
 
@@ -54,6 +59,12 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
             <p><span className="text-muted-foreground">Date :</span> {formatDateTime(booking.startsAt.toISOString(), tz)}</p>
             <p><span className="text-muted-foreground">Fin :</span> {formatDateTime(booking.endsAt.toISOString(), tz)}</p>
             <p><span className="text-muted-foreground">Prix :</span> {formatCents(booking.totalPriceCents)}</p>
+            {booking.bookingAddons.length > 0 && (
+              <p>
+                <span className="text-muted-foreground">Options :</span>{" "}
+                {booking.bookingAddons.map((a) => `${a.name} (+${formatCents(a.priceCents)})`).join(", ")}
+              </p>
+            )}
             <p>
               <span className="text-muted-foreground">Acompte :</span> {formatCents(booking.depositAmountCents)}{" "}
               {booking.depositAmountCents > 0 && (
@@ -96,6 +107,9 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
       </div>
+
+      <PhotoPanel bookingId={booking.id}
+        photos={booking.photos.map((p) => ({ id: p.id, kind: p.kind }))} />
     </div>
   );
 }

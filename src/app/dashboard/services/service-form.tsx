@@ -7,6 +7,7 @@ type Service = {
   id: string; name: string; description: string | null; category: string;
   price_cents: number; duration_minutes: number; deposit_required: boolean;
   deposit_type: string; deposit_value: number; is_active: boolean;
+  rebook_after_days: number | null;
 };
 
 export function ServiceForm({ service, onDone }: { service?: Service; onDone?: () => void }) {
@@ -81,6 +82,19 @@ export function ServiceForm({ service, onDone }: { service?: Service; onDone?: (
           <input type="hidden" name="deposit_value" value={service?.deposit_value ?? 0} />
         </>
       )}
+      <div className="space-y-1.5">
+        <Label>Relance de rebooking automatique</Label>
+        <Select name="rebook_after_days" defaultValue={String(service?.rebook_after_days ?? 0)}>
+          <option value="0">Désactivée</option>
+          <option value="30">30 jours après la prestation</option>
+          <option value="60">60 jours après</option>
+          <option value="90">90 jours après</option>
+          <option value="180">6 mois après</option>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Le client reçoit un email &quot;il est temps de reprendre RDV&quot; avec ton lien de réservation.
+        </p>
+      </div>
       <div className="flex items-center gap-2">
         <input id={`act-${service?.id ?? "new"}`} type="checkbox" name="is_active" defaultChecked={service?.is_active ?? true} />
         <Label htmlFor={`act-${service?.id ?? "new"}`}>Actif (visible sur la page publique)</Label>

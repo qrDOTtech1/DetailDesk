@@ -157,14 +157,22 @@ UPDATE profiles SET platform_role = 'platform_admin' WHERE email = '...';
 - Annulation publique : pas de remboursement auto de l'acompte.
 - Pas de confirmation d'email à l'inscription (le compte est actif immédiatement).
 
+## 6b. Fonctionnalités V1.5
+
+- **Add-ons / options** : chaque service peut proposer des options payantes (ex. "Traitement cuir +30 €") que le client coche à la réservation — le total et l'email de confirmation les incluent, avec prix figé au moment de la réservation.
+- **Relance de rebooking automatique** : chaque service peut définir un délai (30/60/90/180 j) ; le cron envoie "il est temps de reprendre RDV" avec le lien public, une seule fois, et saute les clients qui ont déjà un RDV à venir.
+- **Demande d'avis Google** : renseigne ton lien d'avis dans Réglages ; chaque client reçoit une demande d'avis automatique après une prestation marquée terminée (une seule fois par réservation).
+- **Photos avant / après** : upload sur la fiche réservation (JPEG/PNG/WebP, 2 Mo max, 12 par réservation), stockées en base, servies via une route authentifiée réservée au business (et admin).
+
 ## 7. Roadmap V2
 
 - Comptes staff + invitations
 - Rappels WhatsApp / SMS
 - Sync Google Calendar
-- Galerie avant/après
+- Galerie publique de réalisations
 - Factures PDF
 - Codes promo
+- Devis + validation client
 - **Commission plateforme** (`application_fee_amount` — champ déjà en base)
 - Analytics enrichies
 - White-label

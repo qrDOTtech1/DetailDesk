@@ -9,7 +9,7 @@ import { sendEmail } from "@/lib/mailer";
 import { bookingCancelledEmail } from "@/lib/emails";
 import {
   serviceSchema, customerSchema, vehicleSchema, availabilityRuleSchema,
-  blockedSlotSchema, settingsSchema, businessSchema, bookingStatusSchema,
+  blockedSlotSchema, settingsSchema, businessSchema, bookingStatusSchema, addonSchema,
 } from "@/lib/validators";
 
 type ActionState = { error?: string; success?: string } | null;
@@ -37,6 +37,7 @@ export async function upsertService(_prev: ActionState, formData: FormData): Pro
     depositValue: parsed.data.deposit_type === "fixed"
       ? Math.round(parsed.data.deposit_value * 100)
       : Math.round(parsed.data.deposit_value),
+    rebookAfterDays: parsed.data.rebook_after_days > 0 ? parsed.data.rebook_after_days : null,
     isActive: parsed.data.is_active,
   };
 
@@ -248,6 +249,7 @@ export async function updateSettings(_prev: ActionState, formData: FormData): Pr
       bufferMinutes: parsed.data.buffer_minutes,
       confirmationMessage: parsed.data.confirmation_message || null,
       reminderMessage: parsed.data.reminder_message || null,
+      googleReviewUrl: parsed.data.google_review_url || null,
     },
     update: {
       timezone: parsed.data.timezone,
@@ -256,10 +258,91 @@ export async function updateSettings(_prev: ActionState, formData: FormData): Pr
       bufferMinutes: parsed.data.buffer_minutes,
       confirmationMessage: parsed.data.confirmation_message || null,
       reminderMessage: parsed.data.reminder_message || null,
+      googleReviewUrl: parsed.data.google_review_url || null,
     },
   });
   revalidatePath("/dashboard/settings");
   return { success: "Réglages enregistrés." };
+}
+
+/* ─────────── ADD-ONS ─────────── */
+
+export async function upsertAddon(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const parsed = addonSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  // the addon's service must belong to this business
+  const service = await db.service.findFirst({
+    where: { id: parsed.data.service_id, businessId: ctx.business.id },
+  });
+  if (!service) return { error: "Service introuvable." };
+
+  const id = formData.get("id") ? String(formData.get("id")) : null;
+  const data = {
+    name: parsed.data.name,
+    priceCents: Math.round(parsed.data.price_euros * 100),
+  };
+  if (id) {
+    await db.serviceAddon.updateMany({ where: { id, businessId: ctx.business.id }, data });
+  } else {
+    await db.serviceAddon.create({
+      data: { ...data, businessId: ctx.business.id, serviceId: service.id },
+    });
+  }
+  revalidatePath("/dashboard/services");
+  return { success: "Option enregistrée." };
+}
+
+export async function deleteAddon(formData: FormData) {
+  const ctx = await requireBusiness();
+  await db.serviceAddon.updateMany({
+    where: { id: String(formData.get("id")), businessId: ctx.business.id },
+    data: { isActive: false },
+  });
+  revalidatePath("/dashboard/services");
+}
+
+/* ─────────── PHOTOS AVANT/APRÈS ─────────── */
+
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
+
+export async function uploadBookingPhoto(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const bookingId = String(formData.get("booking_id"));
+  const kind = String(formData.get("kind")) === "after" ? "after" as const : "before" as const;
+  const file = formData.get("photo");
+
+  if (!(file instanceof File) || file.size === 0) return { error: "Choisis une photo." };
+  if (file.size > MAX_PHOTO_BYTES) return { error: "Photo trop lourde (max 2 Mo)." };
+  if (!ALLOWED_MIME.includes(file.type)) return { error: "Format non supporté (JPEG, PNG ou WebP)." };
+
+  const booking = await db.booking.findFirst({
+    where: { id: bookingId, businessId: ctx.business.id }, select: { id: true },
+  });
+  if (!booking) return { error: "Réservation introuvable." };
+
+  const count = await db.bookingPhoto.count({ where: { bookingId, businessId: ctx.business.id } });
+  if (count >= 12) return { error: "Maximum 12 photos par réservation." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  await db.bookingPhoto.create({
+    data: { businessId: ctx.business.id, bookingId, kind, mime: file.type, data: bytes },
+  });
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  return { success: "Photo ajoutée." };
+}
+
+export async function deleteBookingPhoto(formData: FormData) {
+  const ctx = await requireBusiness();
+  const id = String(formData.get("id"));
+  const photo = await db.bookingPhoto.findFirst({
+    where: { id, businessId: ctx.business.id }, select: { bookingId: true },
+  });
+  if (!photo) return;
+  await db.bookingPhoto.deleteMany({ where: { id, businessId: ctx.business.id } });
+  revalidatePath(`/dashboard/bookings/${photo.bookingId}`);
 }
 
 /* ─────────── STRIPE CONNECT ─────────── */

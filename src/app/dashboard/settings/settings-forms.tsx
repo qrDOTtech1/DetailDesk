@@ -10,6 +10,7 @@ type Business = {
 type Settings = {
   timezone: string; reminder_hours_before: number; booking_notice_hours: number;
   buffer_minutes: number; confirmation_message: string | null; reminder_message: string | null;
+  google_review_url: string | null;
 } | null;
 
 export function BusinessSettingsForm({ business }: { business: Business }) {
@@ -56,6 +57,14 @@ export function BookingSettingsForm({ settings }: { settings: Settings }) {
         <Textarea name="confirmation_message" defaultValue={settings?.confirmation_message ?? ""} /></div>
       <div className="space-y-1.5"><Label>Message de rappel (optionnel)</Label>
         <Textarea name="reminder_message" defaultValue={settings?.reminder_message ?? ""} /></div>
+      <div className="space-y-1.5">
+        <Label>Lien avis Google (optionnel)</Label>
+        <Input name="google_review_url" type="url" placeholder="https://g.page/r/…/review"
+          defaultValue={settings?.google_review_url ?? ""} />
+        <p className="text-xs text-muted-foreground">
+          Si renseigné, tes clients reçoivent automatiquement une demande d&apos;avis après chaque prestation terminée.
+        </p>
+      </div>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
       {state?.success && <p className="text-sm text-emerald-600">{state.success}</p>}
       <Button type="submit" disabled={pending}>Enregistrer</Button>

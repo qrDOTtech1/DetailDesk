@@ -84,6 +84,43 @@ export function bookingReminderEmail(b: BookingInfo, customMessage?: string | nu
   };
 }
 
+export function reviewRequestEmail(args: {
+  businessName: string; customerName: string; serviceName: string; reviewUrl: string;
+}) {
+  return {
+    subject: `Ton avis compte — ${args.businessName}`,
+    html: layout(
+      `Merci pour ta visite chez ${args.businessName} !`,
+      `<p>Bonjour ${args.customerName},</p>
+       <p>Merci d'avoir fait confiance à ${args.businessName} pour ton <strong>${args.serviceName}</strong>.</p>
+       <p>Si tu es satisfait du résultat, un avis Google prend 30 secondes et aide énormément :</p>
+       <p style="text-align:center;margin:20px 0;">
+         <a href="${args.reviewUrl}" style="display:inline-block;background:#1e293b;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;">Laisser un avis ⭐</a>
+       </p>
+       <p>Merci beaucoup !</p>`,
+      `Message envoyé au nom de ${args.businessName}.`
+    ),
+  };
+}
+
+export function rebookingEmail(args: {
+  businessName: string; customerName: string; serviceName: string; bookingUrl: string; days: number;
+}) {
+  return {
+    subject: `C'est le moment de refaire briller ta voiture — ${args.businessName}`,
+    html: layout(
+      "Il est temps de reprendre rendez-vous 🚗",
+      `<p>Bonjour ${args.customerName},</p>
+       <p>Ça fait environ ${args.days} jours depuis ton dernier <strong>${args.serviceName}</strong> chez ${args.businessName}.</p>
+       <p>Pour garder ta voiture au top, c'est le bon moment pour reprendre rendez-vous :</p>
+       <p style="text-align:center;margin:20px 0;">
+         <a href="${args.bookingUrl}" style="display:inline-block;background:#1e293b;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;">Réserver un créneau</a>
+       </p>`,
+      `Message envoyé au nom de ${args.businessName}.`
+    ),
+  };
+}
+
 export function passwordResetEmail(resetUrl: string) {
   return {
     subject: "Réinitialise ton mot de passe DetailDesk",

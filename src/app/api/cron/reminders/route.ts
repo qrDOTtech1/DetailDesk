@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/mailer";
-import { bookingReminderEmail } from "@/lib/emails";
+import { bookingReminderEmail, reviewRequestEmail, rebookingEmail } from "@/lib/emails";
 import { appUrl } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
@@ -75,5 +75,67 @@ export async function GET(request: Request) {
     sent++;
   }
 
-  return NextResponse.json({ ok: true, checked: bookings.length, sent, expired: stale.length });
+  // ── Google review requests: completed in the last 7 days, business has a
+  // review URL configured, not already requested for this booking.
+  let reviews = 0;
+  const reviewCandidates = await db.booking.findMany({
+    where: {
+      status: "completed", reviewRequestSentAt: null,
+      endsAt: { lte: now, gte: new Date(now.getTime() - 7 * 24 * 3600_000) },
+    },
+    include: { service: true, customer: true, business: { include: { settings: true } } },
+    take: 200,
+  });
+  for (const b of reviewCandidates) {
+    const url = b.business.settings?.googleReviewUrl;
+    if (!url || !b.customer.email) continue;
+    const email = reviewRequestEmail({
+      businessName: b.business.name, customerName: b.customer.fullName,
+      serviceName: b.service.name, reviewUrl: url,
+    });
+    await sendEmail({ type: "review_request", to: b.customer.email, ...email, businessId: b.businessId, bookingId: b.id });
+    await db.booking.update({ where: { id: b.id }, data: { reviewRequestSentAt: now } });
+    reviews++;
+  }
+
+  // ── Rebooking reminders: service has rebook_after_days, completed booking
+  // older than that, not already reminded, within a 45-day catch-up window.
+  let rebookings = 0;
+  const rebookCandidates = await db.booking.findMany({
+    where: {
+      status: "completed", rebookingReminderSentAt: null,
+      service: { rebookAfterDays: { not: null } },
+    },
+    include: { service: true, customer: true, business: true },
+    take: 500,
+  });
+  for (const b of rebookCandidates) {
+    const days = b.service.rebookAfterDays!;
+    const dueAt = new Date(b.endsAt.getTime() + days * 24 * 3600_000);
+    const windowEnd = new Date(dueAt.getTime() + 45 * 24 * 3600_000);
+    if (now < dueAt || now > windowEnd || !b.customer.email) continue;
+    // skip if the customer already has an upcoming booking with this business
+    const upcoming = await db.booking.count({
+      where: {
+        businessId: b.businessId, customerId: b.customerId,
+        status: { in: ["pending", "confirmed"] }, startsAt: { gte: now },
+      },
+    });
+    if (upcoming > 0) {
+      await db.booking.update({ where: { id: b.id }, data: { rebookingReminderSentAt: now } });
+      continue;
+    }
+    const email = rebookingEmail({
+      businessName: b.business.name, customerName: b.customer.fullName,
+      serviceName: b.service.name, days,
+      bookingUrl: appUrl(`/b/${b.business.slug}`),
+    });
+    await sendEmail({ type: "rebooking_reminder", to: b.customer.email, ...email, businessId: b.businessId, bookingId: b.id });
+    await db.booking.update({ where: { id: b.id }, data: { rebookingReminderSentAt: now } });
+    rebookings++;
+  }
+
+  return NextResponse.json({
+    ok: true, checked: bookings.length, sent, expired: stale.length, reviews, rebookings,
+  });
 }

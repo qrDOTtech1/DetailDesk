@@ -67,6 +67,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               buffer_minutes: settings.bufferMinutes,
               confirmation_message: settings.confirmationMessage,
               reminder_message: settings.reminderMessage,
+              google_review_url: settings.googleReviewUrl,
             } : null} />
           </CardContent>
         </Card>

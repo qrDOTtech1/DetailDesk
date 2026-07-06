@@ -98,6 +98,20 @@ export async function createPublicBooking(slug: string, input: unknown) {
   });
   if (!service) return { error: "Service introuvable." };
 
+  // validate requested add-ons: must be active and belong to THIS service/business
+  const addons = (d.addon_ids?.length ?? 0) > 0
+    ? await db.serviceAddon.findMany({
+        where: {
+          id: { in: d.addon_ids! }, serviceId: service.id,
+          businessId: business.id, isActive: true,
+        },
+      })
+    : [];
+  if (addons.length !== (d.addon_ids?.length ?? 0)) {
+    return { error: "Option invalide, recharge la page." };
+  }
+  const addonsTotal = addons.reduce((s, a) => s + a.priceCents, 0);
+
   // Re-validate the requested slot server-side
   const starts = new Date(d.starts_at);
   const settings = await db.businessSettings.findUnique({ where: { businessId: business.id } });
@@ -171,12 +185,21 @@ export async function createPublicBooking(slug: string, input: unknown) {
           customerId: customer.id, vehicleId: vehicle.id,
           status: "pending",
           startsAt: starts, endsAt: ends,
-          totalPriceCents: service.priceCents,
+          totalPriceCents: service.priceCents + addonsTotal,
           depositAmountCents: depositActive ? deposit : 0,
           depositPaid: false,
           notes: d.notes || null,
         },
       });
+      if (addons.length > 0) {
+        // snapshot name+price so later addon edits don't rewrite history
+        await tx.bookingAddon.createMany({
+          data: addons.map((a) => ({
+            businessId: business.id, bookingId: created.id,
+            name: a.name, priceCents: a.priceCents,
+          })),
+        });
+      }
       await tx.bookingStatusHistory.create({
         data: { businessId: business.id, bookingId: created.id, oldStatus: null, newStatus: "pending" },
       });
@@ -241,7 +264,7 @@ export async function createPublicBooking(slug: string, input: unknown) {
   const email = bookingConfirmationEmail({
     businessName: business.name, customerName: d.customer_name,
     serviceName: service.name, startsAt: starts.toISOString(), timezone: tz,
-    totalCents: service.priceCents, depositCents: 0, cancelUrl,
+    totalCents: service.priceCents + addonsTotal, depositCents: 0, cancelUrl,
   });
   await sendEmail({
     type: "booking_confirmation", to: d.customer_email, ...email,

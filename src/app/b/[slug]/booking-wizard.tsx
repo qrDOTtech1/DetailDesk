@@ -5,10 +5,12 @@ import { getAvailableSlots, createPublicBooking } from "./actions";
 import { computeDeposit, formatCents } from "@/lib/utils";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Textarea } from "@/components/ui";
 
+type Addon = { id: string; name: string; price_cents: number };
 type Service = {
   id: string; name: string; description: string | null; category: string;
   price_cents: number; duration_minutes: number;
   deposit_required: boolean; deposit_type: "fixed" | "percent"; deposit_value: number;
+  addons: Addon[];
 };
 
 export function BookingWizard({ slug, services, stripeConnected, cancellationPolicy }: {
@@ -21,11 +23,16 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
   const [slots, setSlots] = React.useState<string[]>([]);
   const [tz, setTz] = React.useState("Europe/Paris");
   const [slot, setSlot] = React.useState<string | null>(null);
+  const [selectedAddons, setSelectedAddons] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const deposit = service ? computeDeposit(service) : 0;
   const depositActive = deposit > 0 && stripeConnected;
+  const addonsTotal = service
+    ? service.addons.filter((a) => selectedAddons.includes(a.id)).reduce((s, a) => s + a.price_cents, 0)
+    : 0;
+  const total = (service?.price_cents ?? 0) + addonsTotal;
 
   async function loadSlots(d: string, s: Service) {
     setLoading(true); setError(null); setSlots([]); setSlot(null);
@@ -43,6 +50,7 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
     const fd = new FormData(e.currentTarget);
     const res = await createPublicBooking(slug, {
       service_id: service.id,
+      addon_ids: selectedAddons,
       starts_at: slot,
       customer_name: fd.get("customer_name"),
       customer_email: fd.get("customer_email"),
@@ -71,7 +79,7 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
           {services.length === 0 && <p className="text-sm text-muted-foreground">Aucun service disponible pour le moment.</p>}
           {services.map((s) => (
             <button key={s.id} type="button"
-              onClick={() => { setService(s); setStep(2); if (date) loadSlots(date, s); }}
+              onClick={() => { setService(s); setSelectedAddons([]); setStep(2); if (date) loadSlots(date, s); }}
               className={`w-full rounded-md border p-3 text-left transition-colors hover:bg-accent ${service?.id === s.id ? "border-primary ring-1 ring-primary" : ""}`}>
               <div className="flex items-center justify-between">
                 <p className="font-medium">{s.name}</p>
@@ -88,6 +96,26 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
           ))}
         </CardContent>
       </Card>
+
+      {/* Step 1b: add-ons */}
+      {step >= 2 && service && service.addons.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Options supplémentaires</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {service.addons.map((a) => (
+              <label key={a.id} className="flex cursor-pointer items-center justify-between rounded-md border p-3 text-sm hover:bg-accent">
+                <span className="flex items-center gap-2">
+                  <input type="checkbox" checked={selectedAddons.includes(a.id)}
+                    onChange={(e) => setSelectedAddons((prev) =>
+                      e.target.checked ? [...prev, a.id] : prev.filter((id) => id !== a.id))} />
+                  {a.name}
+                </span>
+                <span className="font-medium">+{formatCents(a.price_cents)}</span>
+              </label>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Step 2: date + slot */}
       {step >= 2 && service && (
@@ -142,8 +170,11 @@ export function BookingWizard({ slug, services, stripeConnected, cancellationPol
 
               <div className="rounded-md bg-muted p-3 text-sm">
                 <p><strong>{service.name}</strong> — {formatCents(service.price_cents)}</p>
+                {addonsTotal > 0 && (
+                  <p>Options : +{formatCents(addonsTotal)} → total <strong>{formatCents(total)}</strong></p>
+                )}
                 {depositActive
-                  ? <p>Acompte à régler maintenant : <strong>{formatCents(deposit)}</strong> (reste {formatCents(service.price_cents - deposit)} sur place)</p>
+                  ? <p>Acompte à régler maintenant : <strong>{formatCents(deposit)}</strong> (reste {formatCents(total - deposit)} sur place)</p>
                   : <p>Paiement sur place.</p>}
                 {cancellationPolicy && <p className="mt-1 text-xs text-muted-foreground">{cancellationPolicy}</p>}
               </div>

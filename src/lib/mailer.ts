@@ -6,7 +6,9 @@ export type EmailType =
   | "booking_confirmation"
   | "payment_confirmation"
   | "booking_reminder"
-  | "booking_cancelled";
+  | "booking_cancelled"
+  | "review_request"
+  | "rebooking_reminder";
 
 type SendArgs = {
   type: EmailType;
