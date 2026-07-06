@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { Button } from "@/components/ui";
+import { Logo } from "@/components/logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <span className="font-bold text-lg">DetailDesk</span>
+          <Link href="/"><Logo size={30} /></Link>
           <nav className="flex items-center gap-2">
             <Link href="#tarifs"><Button variant="ghost" className="hidden sm:inline-flex">Tarifs</Button></Link>
             <Link href="/login"><Button variant="ghost">Connexion</Button></Link>
             <Link href="/signup"><Button>Créer mon compte</Button></Link>
+            <ThemeToggle />
           </nav>
         </div>
       </header>

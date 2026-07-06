@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
@@ -8,12 +9,15 @@ export const metadata: Metadata = {
   title: "DetailDesk — Réservation pour auto detailers",
   description:
     "Ton lien de réservation pro pour le detailing, avec acompte, rappels et historique client.",
+  icons: { icon: "/brand/logo.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
-      <body className={inter.className}>{children}</body>
+    <html lang="fr" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

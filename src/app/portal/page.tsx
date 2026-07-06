@@ -5,6 +5,7 @@ import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@/components/ui";
 import { MakeLogo } from "@/components/vehicle-picker";
 import { portalSignOut, setPortalConsent } from "./actions";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 function loyaltyLabel(completed: number, isVip: boolean) {
   if (isVip) return { label: "Client VIP ⭐", variant: "success" };
@@ -67,7 +68,10 @@ export default async function PortalPage() {
             )}
             <span className="font-semibold">{biz.name}</span>
           </div>
-          <form action={portalSignOut}><Button variant="ghost" size="sm">Déconnexion</Button></form>
+          <div className="flex items-center gap-1">
+            <form action={portalSignOut}><Button variant="ghost" size="sm">Déconnexion</Button></form>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

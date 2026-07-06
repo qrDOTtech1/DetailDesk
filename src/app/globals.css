@@ -3,14 +3,36 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* Neutral, utilitarian palette — graphite base, one steel-blue accent.
-       No purple, no gradients, no glow. */
+  /* Dark, premium palette — near-black background, warm gold accent.
+     No purple, no neon, no glow. This is the default brand look. */
+  :root,
+  .dark {
+    --background: 0 0% 5%;
+    --foreground: 40 20% 96%;
+    --card: 0 0% 8%;
+    --card-foreground: 40 20% 96%;
+    --primary: 38 42% 58%;             /* warm gold — CTAs, accents */
+    --primary-foreground: 0 0% 8%;
+    --secondary: 0 0% 13%;
+    --secondary-foreground: 40 20% 92%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 30 8% 62%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 40 20% 94%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 38 42% 58%;
+  }
+
+  /* Light mode — neutral graphite base, same gold accent, opt-in via toggle. */
+  .light {
     --background: 0 0% 100%;
     --foreground: 220 15% 12%;
     --card: 0 0% 100%;
     --card-foreground: 220 15% 12%;
-    --primary: 216 34% 22%;            /* deep steel blue — CTAs */
+    --primary: 38 50% 42%;
     --primary-foreground: 0 0% 98%;
     --secondary: 216 15% 95%;
     --secondary-foreground: 220 15% 15%;
@@ -22,8 +44,9 @@
     --destructive-foreground: 0 0% 98%;
     --border: 216 14% 89%;
     --input: 216 14% 86%;
-    --ring: 216 34% 32%;
+    --ring: 38 50% 42%;
   }
+
   * { @apply border-border; }
   body { @apply bg-background text-foreground antialiased; }
   /* Comfortable base size on mobile — no micro-UI */

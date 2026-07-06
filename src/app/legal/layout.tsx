@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <Link href="/" className="font-bold">DetailDesk</Link>
+          <Link href="/"><Logo size={26} /></Link>
           <nav className="flex gap-4 text-xs text-muted-foreground">
             <Link href="/legal/mentions-legales" className="hover:underline">Mentions légales</Link>
             <Link href="/legal/cgv" className="hover:underline">CGV</Link>
