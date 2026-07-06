@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { stripe, appUrl } from "@/lib/stripe";
+import { z } from "zod";
 import { sendEmail } from "@/lib/mailer";
-import { bookingCancelledEmail } from "@/lib/emails";
+import { bookingCancelledEmail, bookingConfirmationEmail } from "@/lib/emails";
 import {
   serviceSchema, customerSchema, vehicleSchema, availabilityRuleSchema,
   blockedSlotSchema, settingsSchema, businessSchema, bookingStatusSchema, addonSchema,
@@ -163,6 +164,139 @@ export async function updateBookingStatus(formData: FormData) {
   }
   revalidatePath("/dashboard/bookings");
   revalidatePath(`/dashboard/bookings/${id}`);
+}
+
+/* ─────────── MANUAL BOOKING + RESCHEDULE ─────────── */
+
+const manualBookingSchema = z.object({
+  service_id: z.string().uuid(),
+  customer_id: z.string().uuid().optional().or(z.literal("")),
+  customer_name: z.string().max(100).optional().or(z.literal("")),
+  customer_email: z.string().email().optional().or(z.literal("")),
+  customer_phone: z.string().max(30).optional().or(z.literal("")),
+  starts_at: z.string().min(1, "Choisis une date"),
+  notes: z.string().max(1000).optional().or(z.literal("")),
+});
+
+export async function createManualBooking(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const parsed = manualBookingSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const d = parsed.data;
+
+  const service = await db.service.findFirst({
+    where: { id: d.service_id, businessId: ctx.business.id },
+  });
+  if (!service) return { error: "Service introuvable." };
+
+  const starts = new Date(d.starts_at);
+  if (isNaN(starts.getTime())) return { error: "Date invalide." };
+  const ends = new Date(starts.getTime() + service.durationMinutes * 60_000);
+
+  // resolve customer: existing (scoped) or create from the free fields
+  let customerId: string;
+  if (d.customer_id) {
+    const existing = await db.customer.findFirst({
+      where: { id: d.customer_id, businessId: ctx.business.id },
+    });
+    if (!existing) return { error: "Client introuvable." };
+    customerId = existing.id;
+  } else {
+    if (!d.customer_name) return { error: "Indique le nom du client." };
+    const email = d.customer_email?.toLowerCase() || null;
+    const match = email
+      ? await db.customer.findFirst({ where: { businessId: ctx.business.id, email } })
+      : null;
+    customerId = match?.id ?? (await db.customer.create({
+      data: {
+        businessId: ctx.business.id, fullName: d.customer_name,
+        email, phone: d.customer_phone || null,
+      },
+    })).id;
+  }
+
+  try {
+    const booking = await db.$transaction(async (tx) => {
+      const clash = await tx.booking.count({
+        where: {
+          businessId: ctx.business.id, status: { in: ["pending", "confirmed"] },
+          startsAt: { lt: ends }, endsAt: { gt: starts },
+        },
+      });
+      if (clash > 0) throw new Error("SLOT_TAKEN");
+      const created = await tx.booking.create({
+        data: {
+          businessId: ctx.business.id, serviceId: service.id, customerId,
+          status: "confirmed", startsAt: starts, endsAt: ends,
+          totalPriceCents: service.priceCents, notes: d.notes || null,
+        },
+      });
+      await tx.bookingStatusHistory.create({
+        data: {
+          businessId: ctx.business.id, bookingId: created.id,
+          oldStatus: null, newStatus: "confirmed", changedByProfileId: ctx.user.id,
+        },
+      });
+      return created;
+    }, { isolationLevel: "Serializable" });
+    revalidatePath("/dashboard/bookings");
+    redirect(`/dashboard/bookings/${booking.id}`);
+  } catch (e) {
+    if (e instanceof Error && e.message === "SLOT_TAKEN") {
+      return { error: "Ce créneau chevauche une réservation existante." };
+    }
+    throw e; // redirect() throws — let it through
+  }
+}
+
+export async function rescheduleBooking(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ctx = await requireBusiness();
+  const id = String(formData.get("id"));
+  const startsRaw = String(formData.get("starts_at") ?? "");
+  const starts = new Date(startsRaw);
+  if (isNaN(starts.getTime())) return { error: "Date invalide." };
+
+  const booking = await db.booking.findFirst({
+    where: { id, businessId: ctx.business.id },
+    include: { service: true, customer: true },
+  });
+  if (!booking) return { error: "Réservation introuvable." };
+  if (!["pending", "confirmed"].includes(booking.status)) {
+    return { error: "Impossible de déplacer une réservation terminée ou annulée." };
+  }
+
+  const ends = new Date(starts.getTime() + booking.service.durationMinutes * 60_000);
+  const clash = await db.booking.count({
+    where: {
+      businessId: ctx.business.id, id: { not: id },
+      status: { in: ["pending", "confirmed"] },
+      startsAt: { lt: ends }, endsAt: { gt: starts },
+    },
+  });
+  if (clash > 0) return { error: "Ce créneau chevauche une autre réservation." };
+
+  await db.booking.update({ where: { id }, data: { startsAt: starts, endsAt: ends } });
+
+  // tell the customer about the new date
+  if (booking.customer.email) {
+    const settings = await db.businessSettings.findUnique({ where: { businessId: ctx.business.id } });
+    const email = bookingConfirmationEmail({
+      businessName: ctx.business.name, customerName: booking.customer.fullName,
+      serviceName: booking.service.name, startsAt: starts.toISOString(),
+      timezone: settings?.timezone ?? "Europe/Paris",
+      totalCents: booking.totalPriceCents, depositCents: booking.depositAmountCents,
+      cancelUrl: appUrl(`/cancel/${booking.publicCancelToken}`),
+    });
+    await sendEmail({
+      type: "booking_confirmation", to: booking.customer.email,
+      subject: `Rendez-vous déplacé — ${ctx.business.name}`, html: email.html,
+      businessId: ctx.business.id, bookingId: booking.id,
+    });
+  }
+
+  revalidatePath(`/dashboard/bookings/${id}`);
+  revalidatePath("/dashboard/bookings");
+  return { success: "Réservation déplacée, client prévenu par email." };
 }
 
 /* ─────────── AVAILABILITY ─────────── */
@@ -499,6 +633,52 @@ export async function connectStripe() {
     type: "account_onboarding",
   });
   redirect(link.url);
+}
+
+/* ─────────── SUBSCRIPTION (platform billing, 29€/mois) ─────────── */
+
+/** Starts the DetailDesk Pro subscription via Stripe Checkout (14-day trial). */
+export async function startSubscription() {
+  const ctx = await requireBusiness();
+  if (ctx.role !== "owner") return;
+  const priceId = process.env.STRIPE_PRICE_ID;
+  if (!priceId) throw new Error("STRIPE_PRICE_ID is not set");
+
+  const business = await db.business.findUnique({ where: { id: ctx.business.id } });
+  let customerId = business?.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: ctx.business.email, name: ctx.business.name,
+      metadata: { business_id: ctx.business.id },
+    });
+    customerId = customer.id;
+    await db.business.update({ where: { id: ctx.business.id }, data: { stripeCustomerId: customerId } });
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    subscription_data: {
+      trial_period_days: 14,
+      metadata: { business_id: ctx.business.id },
+    },
+    success_url: appUrl("/dashboard/settings?billing=success"),
+    cancel_url: appUrl("/dashboard/settings?billing=cancel"),
+  });
+  redirect(session.url!);
+}
+
+/** Opens the Stripe customer portal (invoices, card, cancel). */
+export async function openBillingPortal() {
+  const ctx = await requireBusiness();
+  const business = await db.business.findUnique({ where: { id: ctx.business.id } });
+  if (!business?.stripeCustomerId) return;
+  const session = await stripe.billingPortal.sessions.create({
+    customer: business.stripeCustomerId,
+    return_url: appUrl("/dashboard/settings"),
+  });
+  redirect(session.url);
 }
 
 /** Re-checks the connected account status (called on return from Stripe onboarding). */

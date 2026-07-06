@@ -6,6 +6,7 @@ import { updateBookingStatus } from "../../actions";
 import { formatCents, formatDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@/components/ui";
 import { PhotoPanel } from "./photo-panel";
+import { RescheduleForm } from "./reschedule-form";
 
 const transitions: Record<string, [string, string][]> = {
   pending: [["confirmed", "Confirmer"], ["cancelled", "Annuler"]],
@@ -54,6 +55,7 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
             <Button type="submit" variant={status === "cancelled" ? "destructive" : "default"} size="sm">{label}</Button>
           </form>
         ))}
+        {["pending", "confirmed"].includes(booking.status) && <RescheduleForm bookingId={booking.id} />}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

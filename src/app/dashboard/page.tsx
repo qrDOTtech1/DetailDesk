@@ -43,6 +43,18 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {!["active", "trialing"].includes(ctx.business.subscription_status ?? "") && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <p className="text-sm">
+              <strong>Essai gratuit disponible.</strong> Active ton abonnement DetailDesk Pro
+              (14 jours offerts, 29 €/mois ensuite) pour pérenniser ton compte.
+            </p>
+            <Link href="/dashboard/settings#billing"><Button size="sm">Démarrer l&apos;essai</Button></Link>
+          </CardContent>
+        </Card>
+      )}
+
       {!ctx.business.stripe_connected && (
         <Card className="border-amber-300 bg-amber-50">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">

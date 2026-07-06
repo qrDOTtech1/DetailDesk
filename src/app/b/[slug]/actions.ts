@@ -6,7 +6,7 @@ import { computeDeposit } from "@/lib/utils";
 import { publicBookingSchema } from "@/lib/validators";
 import { stripe, appUrl } from "@/lib/stripe";
 import { sendEmail } from "@/lib/mailer";
-import { bookingConfirmationEmail } from "@/lib/emails";
+import { bookingConfirmationEmail, newBookingProEmail } from "@/lib/emails";
 import { addMinutes } from "date-fns";
 import { headers } from "next/headers";
 import { rateLimit } from "@/lib/rate-limit";
@@ -259,6 +259,19 @@ export async function createPublicBooking(slug: string, input: unknown) {
   }
 
   const cancelUrl = appUrl(`/cancel/${booking.publicCancelToken}`);
+
+  // notify the PRO — they must not have to poll their dashboard
+  await sendEmail({
+    type: "new_booking_pro", to: business.email,
+    ...newBookingProEmail({
+      customerName: d.customer_name, customerPhone: d.customer_phone || null,
+      serviceName: service.name, startsAt: starts.toISOString(), timezone: tz,
+      totalCents: netTotal, depositCents: depositActive ? deposit : 0, depositPaid: false,
+      vehicle: `${d.vehicle_make} ${d.vehicle_model}`,
+      dashboardUrl: appUrl(`/dashboard/bookings/${booking.id}`),
+    }),
+    businessId: business.id, bookingId: booking.id,
+  });
 
   if (depositActive) {
     // Checkout Session on the CONNECTED account (money goes to the pro).

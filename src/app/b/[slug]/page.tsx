@@ -105,6 +105,7 @@ export default async function PublicBookingPage({ params, searchParams }: {
         <p className="mt-8 text-center text-xs text-muted-foreground">
           <Link href={`/b/${business.slug}/portail`} className="underline">Espace client</Link>
           {" · "}Propulsé par DetailDesk
+          {" · "}<Link href="/legal/confidentialite" className="underline">Confidentialité</Link>
         </p>
       </div>
     </main>

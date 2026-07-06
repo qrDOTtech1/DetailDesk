@@ -1,6 +1,6 @@
 import { requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { refreshStripeStatus, connectStripe, toggleSmsReminders } from "../actions";
+import { refreshStripeStatus, connectStripe, toggleSmsReminders, startSubscription, openBillingPortal } from "../actions";
 import { getSmsUsage } from "@/lib/sms";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui";
 import { BusinessSettingsForm, BookingSettingsForm } from "./settings-forms";
@@ -45,6 +45,34 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Réglages</h1>
+
+      <Card id="billing">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Abonnement DetailDesk Pro
+            {["active", "trialing"].includes(ctx.business.subscription_status ?? "")
+              ? <Badge variant="success">{ctx.business.subscription_status === "trialing" ? "Essai en cours" : "Actif"}</Badge>
+              : ctx.business.subscription_status === "past_due"
+                ? <Badge variant="warning">Paiement en retard</Badge>
+                : <Badge variant="muted">Non abonné</Badge>}
+          </CardTitle>
+          <CardDescription>
+            29 €/mois tout inclus — 14 jours d&apos;essai gratuit, sans engagement.
+            150 SMS/mois inclus puis 1 € par tranche de 10 SMS.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {["active", "trialing", "past_due"].includes(ctx.business.subscription_status ?? "") ? (
+            <form action={openBillingPortal}>
+              <Button type="submit" variant="outline">Gérer mon abonnement (factures, carte, résiliation)</Button>
+            </form>
+          ) : (
+            <form action={startSubscription}>
+              <Button type="submit">Démarrer mon essai gratuit de 14 jours</Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
 
       <Card id="stripe">
         <CardHeader>

@@ -81,7 +81,12 @@ export default function Home() {
       </section>
 
       <footer className="border-t py-6 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} DetailDesk
+        <p>© {new Date().getFullYear()} DetailDesk — un produit Matable.pro</p>
+        <p className="mt-1 space-x-3 text-xs">
+          <Link href="/legal/mentions-legales" className="hover:underline">Mentions légales</Link>
+          <Link href="/legal/cgv" className="hover:underline">CGV</Link>
+          <Link href="/legal/confidentialite" className="hover:underline">Confidentialité</Link>
+        </p>
       </footer>
     </main>
   );

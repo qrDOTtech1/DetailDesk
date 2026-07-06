@@ -56,6 +56,7 @@ enum EmailType {
   booking_cancelled
   review_request
   rebooking_reminder
+  new_booking_pro
 }
 
 enum PhotoKind {
@@ -117,6 +118,10 @@ model Business {
   cancellationPolicy  String?  @map("cancellation_policy")
   stripeAccountId     String?  @map("stripe_account_id")
   stripeConnected     Boolean  @default(false) @map("stripe_connected")
+  // platform subscription (Stripe Billing on the PLATFORM account)
+  stripeCustomerId    String?  @map("stripe_customer_id")
+  subscriptionId      String?  @map("subscription_id")
+  subscriptionStatus  String?  @map("subscription_status") // trialing|active|past_due|canceled
   isActive            Boolean  @default(true) @map("is_active")
   isTest              Boolean  @default(false) @map("is_test")
   createdAt           DateTime @default(now()) @map("created_at")

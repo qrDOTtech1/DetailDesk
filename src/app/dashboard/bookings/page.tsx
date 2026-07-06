@@ -47,7 +47,10 @@ export default async function BookingsPage({ searchParams }: {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">Réservations</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Réservations</h1>
+        <Link href="/dashboard/bookings/new"><Button size="sm">+ Réservation</Button></Link>
+      </div>
 
       <form method="GET" className="flex flex-wrap items-end gap-2 rounded-lg border bg-background p-3">
         <input type="hidden" name="status" value={status} />

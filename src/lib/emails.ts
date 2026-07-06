@@ -121,6 +121,31 @@ export function rebookingEmail(args: {
   };
 }
 
+export function newBookingProEmail(args: {
+  customerName: string; customerPhone?: string | null; serviceName: string;
+  startsAt: string; timezone: string; totalCents: number; depositCents: number;
+  depositPaid: boolean; vehicle?: string | null; dashboardUrl: string;
+}) {
+  return {
+    subject: `Nouvelle réservation — ${args.customerName}, ${formatDateTime(args.startsAt, args.timezone)}`,
+    html: layout(
+      "Nouvelle réservation 📅",
+      `<table style="width:100%;font-size:14px;">
+         <tr><td style="padding:4px 0;color:#71717a;">Client</td><td><strong>${args.customerName}</strong>${args.customerPhone ? ` — ${args.customerPhone}` : ""}</td></tr>
+         <tr><td style="padding:4px 0;color:#71717a;">Service</td><td>${args.serviceName}</td></tr>
+         ${args.vehicle ? `<tr><td style="padding:4px 0;color:#71717a;">Véhicule</td><td>${args.vehicle}</td></tr>` : ""}
+         <tr><td style="padding:4px 0;color:#71717a;">Date</td><td><strong>${formatDateTime(args.startsAt, args.timezone)}</strong></td></tr>
+         <tr><td style="padding:4px 0;color:#71717a;">Total</td><td>${formatCents(args.totalCents)}</td></tr>
+         ${args.depositCents > 0 ? `<tr><td style="padding:4px 0;color:#71717a;">Acompte</td><td>${formatCents(args.depositCents)} ${args.depositPaid ? "✅ payé" : "⏳ en attente de paiement"}</td></tr>` : ""}
+       </table>
+       <p style="text-align:center;margin:20px 0;">
+         <a href="${args.dashboardUrl}" style="display:inline-block;background:#1e293b;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;">Voir la réservation</a>
+       </p>`,
+      "Notification DetailDesk."
+    ),
+  };
+}
+
 export function portalMagicLinkEmail(args: { businessName: string; loginUrl: string }) {
   return {
     subject: `Ton espace client — ${args.businessName}`,

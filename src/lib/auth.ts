@@ -22,6 +22,7 @@ export type BusinessContext = SessionContext & {
     cancellation_policy: string | null;
     stripe_account_id: string | null;
     stripe_connected: boolean;
+    subscription_status: string | null;
   };
   role: "owner" | "staff";
 };
@@ -100,6 +101,7 @@ export async function requireBusiness(): Promise<BusinessContext> {
       phone: b.phone, address: b.address, business_type: b.businessType,
       logo_url: b.logoUrl, cancellation_policy: b.cancellationPolicy,
       stripe_account_id: b.stripeAccountId, stripe_connected: b.stripeConnected,
+      subscription_status: b.subscriptionStatus,
     },
   };
 }
