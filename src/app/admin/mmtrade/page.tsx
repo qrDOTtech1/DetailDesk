@@ -22,12 +22,14 @@ async function fetchBot(path: string) {
 export default async function MMTradePage() {
   await requirePlatformAdmin();
 
-  const [snapshot, precheck, killswitch, logs, curves] = await Promise.all([
+  // curves n'est plus fetche ici : CourbesTab (client) recharge lui-meme via
+  // /admin/mmtrade/curve, avec zoom -- pas besoin d'un rendu initial pour un
+  // onglet qui n'est pas actif par defaut.
+  const [snapshot, precheck, killswitch, logs] = await Promise.all([
     fetchBot("/api/snapshot"),
     fetchBot("/api/precheck"),
     fetchBot("/api/killswitch"),
     fetchBot("/api/log?n=200"),
-    fetchBot("/api/curve?range=1800"),
   ]);
 
   if (snapshot?.error) {
@@ -52,7 +54,6 @@ export default async function MMTradePage() {
       precheck={precheck}
       killswitch={killswitch}
       initialLogs={Array.isArray(logs) ? logs : []}
-      curves={Array.isArray(curves) ? curves : []}
     />
   );
 }

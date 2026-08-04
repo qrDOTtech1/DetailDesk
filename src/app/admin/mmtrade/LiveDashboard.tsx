@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Tabs } from "./Tabs";
-import { Sparkline } from "./Sparkline";
+import { CourbesTab } from "./CourbesTab";
+import { PositionsTab } from "./PositionsTab";
+import { HistoriqueTab } from "./HistoriqueTab";
 import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
@@ -38,13 +40,11 @@ export function LiveDashboard({
   precheck,
   killswitch,
   initialLogs,
-  curves,
 }: {
   initialSnapshot: any;
   precheck: any;
   killswitch: any;
   initialLogs: string[];
-  curves: any[];
 }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [logs, setLogs] = useState(initialLogs);
@@ -73,14 +73,14 @@ export function LiveDashboard({
   const triggered = killswitch?.triggered;
   const floor = snapshot.floor ?? 0;
 
-  const allTrades = symbols
-    .flatMap((sym) => (markets[sym]?.trades ?? []).map((t: any) => ({ ...t, __sym: sym })))
-    .filter((t: any) => t.mode === "real")
-    .sort((a: any, b: any) => (b.opened_ts ?? b.ts ?? 0) - (a.opened_ts ?? a.ts ?? 0))
-    .slice(0, 30);
-
   const totalReal = symbols.reduce((s, sym) => s + (markets[sym]?.pnl_total_real ?? 0), 0);
   const openPositions = symbols.flatMap((sym) => (markets[sym]?.open ?? []).map((p: any) => ({ ...p, __sym: sym })));
+  // price_log par symbole/slug (Up/Down des marches recents) : deja pousse
+  // en direct dans snapshot.markets[sym].price_log, aucun fetch separe.
+  const priceLogBySymbol: Record<string, Record<string, any[]>> = {};
+  for (const sym of symbols) {
+    if (markets[sym]?.price_log) priceLogBySymbol[sym] = markets[sym].price_log;
+  }
 
   const overview = (
     <div className="space-y-5">
@@ -195,77 +195,6 @@ export function LiveDashboard({
     </div>
   );
 
-  const courbes = (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[11px] text-zinc-500">
-        Les courbes se rechargent au chargement de la page (pas encore poussees par le flux temps reel) --
-        tout le reste de ce dashboard (cash, PnL, positions, journal) est en direct.
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {curves.length === 0 && <Card><div className="text-xs text-zinc-500">Pas encore de donnees de courbe.</div></Card>}
-        {curves.map((c: any) => (
-          <Card key={c.symbol}>
-            <Sparkline symbol={c.symbol} points={(c.points ?? []).map((p: any) => ({ ts: p.ts, price: p.price }))} strike={c.strikes?.[c.strikes.length - 1]?.strike} />
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-
-  const positionsEtTrades = (
-    <div className="space-y-5">
-      <Card>
-        <div className="mb-2 text-sm font-medium">Positions ouvertes ({openPositions.length})</div>
-        {openPositions.length === 0 ? (
-          <div className="text-xs text-zinc-500">Aucune position ouverte.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-left text-zinc-500">
-                <tr><th className="pb-1 pr-3">Symbole</th><th className="pb-1 pr-3">Cote</th><th className="pb-1 pr-3">Entree</th><th className="pb-1 pr-3">Parts</th><th className="pb-1">Strategie</th></tr>
-              </thead>
-              <tbody className="text-zinc-300">
-                {openPositions.map((p: any, i: number) => (
-                  <tr key={i} className="border-t border-white/5">
-                    <td className="py-1 pr-3 font-medium">{p.__sym}</td>
-                    <td className="py-1 pr-3">{p.side}</td>
-                    <td className="py-1 pr-3 tabular-nums">{Number(p.entry_price ?? 0).toFixed(3)}</td>
-                    <td className="py-1 pr-3 tabular-nums">{Number(p.filled_shares ?? 0).toFixed(2)}</td>
-                    <td className="py-1 text-zinc-500">{p.strat ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-      <Card>
-        <div className="mb-2 text-sm font-medium">Trades reels recents ({allTrades.length})</div>
-        {allTrades.length === 0 ? (
-          <div className="text-xs text-zinc-500">Aucun trade reel encore.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-left text-zinc-500">
-                <tr><th className="pb-1 pr-3">Symbole</th><th className="pb-1 pr-3">Cote</th><th className="pb-1 pr-3">PnL</th><th className="pb-1">Resultat</th></tr>
-              </thead>
-              <tbody className="text-zinc-300">
-                {allTrades.map((t: any, i: number) => (
-                  <tr key={i} className="border-t border-white/5">
-                    <td className="py-1 pr-3 font-medium">{t.__sym}</td>
-                    <td className="py-1 pr-3">{t.side ?? "-"}</td>
-                    <td className="py-1 pr-3 tabular-nums"><Money v={t.pnl} /></td>
-                    <td className="py-1"><span className={t.win ? "text-emerald-400" : "text-red-400"}>{t.win ? "gain" : "perte"}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-
   const journal = (
     <Card>
       <div className="max-h-[32rem] overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
@@ -300,8 +229,9 @@ export function LiveDashboard({
       <Tabs
         tabs={[
           { label: "Vue d'ensemble", content: overview },
-          { label: "Courbes", content: courbes },
-          { label: "Positions & Trades", content: positionsEtTrades },
+          { label: "Courbes", content: <CourbesTab priceLogBySymbol={priceLogBySymbol} /> },
+          { label: "Positions", content: <PositionsTab positions={openPositions} /> },
+          { label: "Historique", content: <HistoriqueTab symbols={symbols} /> },
           { label: "Journal", content: journal },
         ]}
       />
