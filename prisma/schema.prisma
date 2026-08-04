@@ -593,3 +593,37 @@ model MmtradeKillswitchEvent {
 
   @@map("mmtrade_killswitch_events")
 }
+
+// Params seulement (plancher + seuils kill-switch) -- PAS le journal texte
+// (ecrit a chaque tick de scan, y brancher une ecriture DB synchrone
+// ajouterait de la latence dans la boucle live qu'on a passe la nuit a
+// optimiser) et PAS l'etat de trading complet (positions/trades, encore
+// instable). Une seule ligne (id="current"), ecrite en best-effort/
+// arriere-plan a chaque changement -- si Postgres est injoignable, le
+// changement reste applique localement quand meme (jamais bloquant).
+// Lue au demarrage du bot pour restaurer floor/killswitch meme si le
+// volume Railway a ete perdu (deja arrive une fois cette nuit).
+model MmtradeConfigState {
+  id                              String   @id
+  floorUsd                        Float    @map("floor_usd")
+  killswitchEnabled                Boolean  @map("killswitch_enabled")
+  killswitchCashFloorUsd           Float    @map("killswitch_cash_floor_usd")
+  killswitchMaxSessionLossUsd      Float    @map("killswitch_max_session_loss_usd")
+  killswitchMaxGlobalConsecLosses  Int      @map("killswitch_max_global_consec_losses")
+  updatedAt                       DateTime @updatedAt @map("updated_at")
+
+  @@map("mmtrade_config_state")
+}
+
+// Audit des changements de parametres et de mode (Steven 04/08). Les modes
+// sont journalises ici mais JAMAIS auto-restaures au demarrage -- redemarrer
+// avec un symbole repasse a "real" tout seul serait dangereux, cf. la
+// philosophie du kill-switch (ne reprend jamais le trading automatiquement).
+model MmtradeConfigEvent {
+  id        String   @id @default(uuid())
+  kind      String   // "floor" | "killswitch_config" | "mode"
+  detail    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("mmtrade_config_events")
+}
