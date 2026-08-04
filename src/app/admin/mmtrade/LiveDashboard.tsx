@@ -13,6 +13,7 @@ import { SystemTab } from "./SystemTab";
 import { WatchTab } from "./WatchTab";
 import { DocumentationTab } from "./DocumentationTab";
 import { JournalTab } from "./JournalTab";
+import { RiskTab } from "./RiskTab";
 import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
@@ -305,6 +306,7 @@ export function LiveDashboard({
           { label: "Historique", content: <HistoriqueTab symbols={symbols} /> },
           { label: "Historique reel (on-chain)", content: <RealHistoryTab /> },
           { label: "Latence", content: <LatenceTab /> },
+          { label: "Risque (SL/TP)", content: <RiskTab /> },
           { label: "Strategies", content: <StrategiesTab snapshot={snapshot} /> },
           { label: "ENGINEBTB3", content: <EngineBTB3Tab /> },
           { label: "Systeme", content: <SystemTab snapshot={snapshot} precheck={precheck} connected={connected} /> },
