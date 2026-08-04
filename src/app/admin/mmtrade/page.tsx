@@ -29,7 +29,7 @@ export default async function MMTradePage() {
     fetchBot("/api/snapshot"),
     fetchBot("/api/precheck"),
     fetchBot("/api/killswitch"),
-    fetchBot("/api/log?n=200"),
+    fetchBot("/api/log?n=5000"), // max supporte par le bot -- "toutes les lignes meme historique"
   ]);
 
   if (snapshot?.error) {

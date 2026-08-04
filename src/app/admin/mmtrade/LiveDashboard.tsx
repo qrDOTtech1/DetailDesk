@@ -50,6 +50,7 @@ export function LiveDashboard({
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [logs, setLogs] = useState(initialLogs);
   const [connected, setConnected] = useState(false);
+  const [logSearch, setLogSearch] = useState("");
 
   // EventSource natif ne peut pas envoyer de header Authorization -> on se
   // connecte au proxy same-origin /admin/mmtrade/stream (route.ts), qui lui
@@ -60,7 +61,32 @@ export function LiveDashboard({
       try { setSnapshot(JSON.parse((e as MessageEvent).data)); } catch {}
     });
     es.addEventListener("log", (e) => {
-      try { setLogs(JSON.parse((e as MessageEvent).data)); } catch {}
+      // FUSION PAR CHEVAUCHEMENT (Steven 04/08) : le bot pousse seulement les
+      // 30 dernieres lignes toutes les 2s. Un setLogs(nouvelles_lignes) direct
+      // REMPLACAIT tout l'historique deja affiche a chaque push -> impossible
+      // de scroller en arriere ou de selectionner du texte (le DOM entier
+      // etait detruit et recree toutes les 2s). On cherche le plus long
+      // chevauchement entre la fin de ce qu'on a deja et le debut du nouveau
+      // paquet, et on n'AJOUTE que les lignes reellement nouvelles.
+      try {
+        const incoming: string[] = JSON.parse((e as MessageEvent).data);
+        setLogs((prev) => {
+          let overlap = 0;
+          const maxCheck = Math.min(prev.length, incoming.length);
+          for (let k = maxCheck; k > 0; k--) {
+            if (prev.slice(prev.length - k).join("\n") === incoming.slice(0, k).join("\n")) {
+              overlap = k;
+              break;
+            }
+          }
+          const fresh = incoming.slice(overlap);
+          if (fresh.length === 0) return prev;
+          const merged = [...prev, ...fresh];
+          // borne genereuse (5000, meme plafond que le bot) -- pas de perte
+          // silencieuse en usage normal, juste un garde-fou memoire.
+          return merged.length > 5000 ? merged.slice(merged.length - 5000) : merged;
+        });
+      } catch {}
     });
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);
@@ -196,10 +222,27 @@ export function LiveDashboard({
     </div>
   );
 
+  const filteredLogs = logSearch.trim() ? logs.filter((l) => l.toLowerCase().includes(logSearch.toLowerCase())) : logs;
+
   const journal = (
     <Card>
-      <div className="max-h-[32rem] overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
-        {logs.map((l: string, i: number) => (
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <input
+          value={logSearch}
+          onChange={(e) => setLogSearch(e.target.value)}
+          placeholder="Rechercher dans le journal..."
+          className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600"
+        />
+        <span className="text-[11px] text-zinc-500">{filteredLogs.length} / {logs.length} lignes</span>
+        <a
+          href="/admin/mmtrade/logfile"
+          className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20"
+        >
+          Telecharger journal complet
+        </a>
+      </div>
+      <div className="max-h-[36rem] select-text overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
+        {filteredLogs.map((l: string, i: number) => (
           <div key={i} className="whitespace-pre-wrap break-all">{l}</div>
         ))}
       </div>
