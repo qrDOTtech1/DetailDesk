@@ -44,12 +44,17 @@ function StageCard({ label, s }: { label: string; s: any }) {
 export function LatenceTab() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [eq, setEq] = useState<any>(null);
 
   useEffect(() => {
     fetch("/admin/mmtrade/latency")
       .then((r) => r.json())
       .then(setData)
       .finally(() => setLoading(false));
+    fetch("/admin/mmtrade/execution-quality")
+      .then((r) => r.json())
+      .then(setEq)
+      .catch(() => {});
   }, []);
 
   if (loading) return <Card><div className="text-xs text-zinc-500">Chargement...</div></Card>;
@@ -73,6 +78,33 @@ export function LatenceTab() {
         <StageCard label="Signature (2 ordres, en parallele)" s={stats.signature_ms} />
         <StageCard label="Soumission reseau (post_orders)" s={stats.post_orders_ms} />
       </div>
+
+      {eq?.stats && eq.stats.attempted > 0 && (
+        <div>
+          <div className="mb-2 text-sm font-medium">Qualite d&apos;execution</div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card>
+              <div className="text-[11px] text-zinc-500">Fill ratio</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums">{eq.stats.fill_ratio_pct}%</div>
+              <div className="mt-1 text-[10px] text-zinc-600">{eq.stats.filled}/{eq.stats.attempted} paires</div>
+            </Card>
+            <Card>
+              <div className="text-[11px] text-zinc-500">EV net de fees (moy.)</div>
+              <div className={`mt-1 text-xl font-semibold tabular-nums ${(eq.stats.avg_ev_net_fees_pct ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {eq.stats.avg_ev_net_fees_pct}%
+              </div>
+            </Card>
+            <Card>
+              <div className="text-[11px] text-zinc-500">Fraicheur donnees (moy.)</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums">{eq.stats.avg_feed_age_ms}ms</div>
+            </Card>
+            <Card>
+              <div className="text-[11px] text-zinc-500">Fraicheur donnees (max)</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums text-amber-400">{eq.stats.max_feed_age_ms}ms</div>
+            </Card>
+          </div>
+        </div>
+      )}
 
       <Card>
         <div className="mb-1 text-sm font-medium">Latence totale dans le temps</div>
