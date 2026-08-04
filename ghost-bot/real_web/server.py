@@ -575,9 +575,10 @@ def stream():
 
 
 if __name__ == "__main__":
-    # Bind 0.0.0.0 + $PORT (Railway) au lieu de 127.0.0.1:8787 (localhost) :
-    # cette copie tourne dans un conteneur, le port fixe/localhost la rendrait
-    # injoignable de l'exterieur. Ne PAS reporter ce changement sur la version
-    # locale (real_web/server.py sur ce PC) qui doit rester en 127.0.0.1.
-    import os as _os
-    app.run(host="0.0.0.0", port=int(_os.environ.get("PORT", 8787)), threaded=True, debug=False)
+    # 127.0.0.1:8787 FIXE (Steven 04/08, fusion en 1 seul service Railway avec
+    # DetailDesk) : le bot tourne dans le MEME conteneur que Next.js, qui lui
+    # prend $PORT et est seul expose publiquement par Railway. Le bot doit
+    # rester injoignable depuis l'exterieur -> loopback uniquement, port fixe
+    # (pas $PORT, qui appartient a Next.js dans ce conteneur). Next.js parle
+    # au bot via http://127.0.0.1:8787 (voir MMTRADE_API_URL cote admin).
+    app.run(host="127.0.0.1", port=8787, threaded=True, debug=False)

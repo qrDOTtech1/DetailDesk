@@ -577,3 +577,19 @@ model BookingReminder {
 
   @@map("booking_reminders")
 }
+
+// MMTrade V1 (Steven 04/08) : le bot ecrit ici en best-effort (jamais
+// bloquant -- si l'ecriture DB echoue, le kill-switch continue d'arreter le
+// trading quand meme, cf. ghost-bot/real_web/trader.py::_check_global_killswitch).
+// Volontairement PAS de table pour l'etat de trading complet (positions,
+// trades) : le format interne du bot est encore instable ce soir, le
+// migrer vers Postgres sous pression de temps serait risque pour de
+// l'argent reel. Seul l'evenement de securite est journalise ici.
+model MmtradeKillswitchEvent {
+  id            String   @id @default(uuid())
+  reason        String
+  cashAtTrigger Float    @map("cash_at_trigger")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("mmtrade_killswitch_events")
+}

@@ -944,6 +944,38 @@ class MultiTrader:
             if any_real:
                 self._log(f"⛔ [KILL-SWITCH] DECLENCHE : {reason} -> TOUS les symboles passes a 'off'")
             self._save()
+            # AUDIT DB (Steven 04/08, "on utilise la DB de DetailDesk") : best-
+            # effort, EN ARRIERE-PLAN, apres coup -> l'arret reel (ci-dessus)
+            # ne depend JAMAIS de la DB. Si Postgres est injoignable, le
+            # kill-switch a quand meme fait son travail, seul le journal
+            # d'audit est manquant (log local en secours dans ce cas).
+            try:
+                self._pool.submit(self._audit_killswitch_to_db, reason, cash)
+            except Exception:
+                pass
+
+    def _audit_killswitch_to_db(self, reason: str, cash: float):
+        dsn = os.environ.get("DATABASE_URL")
+        if not dsn:
+            return
+        try:
+            import uuid
+
+            import psycopg2
+
+            conn = psycopg2.connect(dsn, connect_timeout=5)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'INSERT INTO "mmtrade_killswitch_events" (id, reason, cash_at_trigger) '
+                        "VALUES (%s, %s, %s)",
+                        (str(uuid.uuid4()), reason, cash),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            self._log(f"⚠️ [KILL-SWITCH] audit DB echoue (non bloquant) : {str(e)[:120]}")
 
     def precheck(self):
         cash, msg = self._read_cash()

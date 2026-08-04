@@ -1,12 +1,17 @@
 import { requirePlatformAdmin } from "@/lib/auth";
 
-// Proxy serveur -> bot GHOST (Steven 04/08) : le token et l'URL du bot ne
-// sortent JAMAIS vers le navigateur. Cette page tourne en Server Component,
-// fait le fetch cote serveur, et ne renvoie au client que du HTML deja rempli.
+// Proxy serveur -> bot MMTRADE (Steven 04/08) : le token ne sort JAMAIS vers
+// le navigateur. Cette page tourne en Server Component, fait le fetch cote
+// serveur, et ne renvoie au client que du HTML deja rempli.
+// Meme conteneur/service que DetailDesk (fusion decidee par Steven) : le bot
+// n'est PAS expose publiquement, seulement joignable en 127.0.0.1 depuis ce
+// process Next.js -> URL par defaut interne, plus besoin de la configurer
+// en prod (MMTRADE_API_URL reste overridable pour tester en local si le bot
+// tourne ailleurs pendant le dev).
 async function fetchBot(path: string) {
-  const base = process.env.MMTRADE_API_URL;
+  const base = process.env.MMTRADE_API_URL || "http://127.0.0.1:8787";
   const token = process.env.MMTRADE_API_TOKEN;
-  if (!base || !token) return { error: "MMTRADE_API_URL / MMTRADE_API_TOKEN non configures" };
+  if (!token) return { error: "MMTRADE_API_TOKEN non configure (doit matcher GHOST_API_TOKEN du bot)" };
   try {
     const res = await fetch(`${base}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
