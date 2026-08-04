@@ -11,8 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # ── Next.js (DetailDesk) ─────────────────────────────────
+# npm install PAS npm ci (Steven 04/08) : le lock file est regenere sous
+# Windows (poste de dev), le build tourne sous Linux -- certains paquets
+# optionnels (@emnapi/*, deps natives specifiques a la plateforme) different
+# entre les deux, donc "ci" (qui exige une parite stricte lock<->platform)
+# echoue systematiquement ici, meme lock file "a jour" cote Windows. "install"
+# resout correctement pour la plateforme de build reelle, sans cette exigence
+# impossible a tenir entre 2 OS differents. Deja arrive au moins 1 fois avant
+# cette session (voir git log "Fix lock file drift again").
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npx prisma generate
 RUN npm run build
