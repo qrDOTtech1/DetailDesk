@@ -1,9 +1,0 @@
-node_modules
-.next
-.git
-*.log
-.env
-.env.local
-ghost-bot/data
-ghost-bot/__pycache__
-ghost-bot/**/__pycache__

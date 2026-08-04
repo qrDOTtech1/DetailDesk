@@ -3,15 +3,17 @@ import { requirePlatformAdmin } from "@/lib/auth";
 // Proxy serveur -> bot MMTRADE (Steven 04/08) : le token ne sort JAMAIS vers
 // le navigateur. Cette page tourne en Server Component, fait le fetch cote
 // serveur, et ne renvoie au client que du HTML deja rempli.
-// Meme conteneur/service que DetailDesk (fusion decidee par Steven) : le bot
-// n'est PAS expose publiquement, seulement joignable en 127.0.0.1 depuis ce
-// process Next.js -> URL par defaut interne, plus besoin de la configurer
-// en prod (MMTRADE_API_URL reste overridable pour tester en local si le bot
-// tourne ailleurs pendant le dev).
+// Service Railway DEDIE (repo MMTV1, separe de DetailDesk) : joignable via le
+// RESEAU PRIVE Railway (ex: http://mmtv1.railway.internal:8787), jamais
+// public tant qu'aucun domaine n'est genere pour ce service. MMTRADE_API_URL
+// doit etre configuree avec ce hostname interne (visible dans Settings ->
+// Networking du service MMTV1 une fois deploye).
 async function fetchBot(path: string) {
-  const base = process.env.MMTRADE_API_URL || "http://127.0.0.1:8787";
+  const base = process.env.MMTRADE_API_URL;
   const token = process.env.MMTRADE_API_TOKEN;
-  if (!token) return { error: "MMTRADE_API_TOKEN non configure (doit matcher GHOST_API_TOKEN du bot)" };
+  if (!base || !token) {
+    return { error: "MMTRADE_API_URL / MMTRADE_API_TOKEN non configures (URL reseau prive Railway du service MMTV1)" };
+  }
   try {
     const res = await fetch(`${base}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
