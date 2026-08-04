@@ -4,6 +4,7 @@ import { Tabs } from "./Tabs";
 import { CourbesTab } from "./CourbesTab";
 import { PositionsTab } from "./PositionsTab";
 import { HistoriqueTab } from "./HistoriqueTab";
+import { LatenceTab } from "./LatenceTab";
 import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
@@ -232,6 +233,7 @@ export function LiveDashboard({
           { label: "Courbes", content: <CourbesTab priceLogBySymbol={priceLogBySymbol} /> },
           { label: "Positions", content: <PositionsTab positions={openPositions} /> },
           { label: "Historique", content: <HistoriqueTab symbols={symbols} /> },
+          { label: "Latence", content: <LatenceTab /> },
           { label: "Journal", content: journal },
         ]}
       />
