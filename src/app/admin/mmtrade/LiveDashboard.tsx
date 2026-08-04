@@ -5,6 +5,7 @@ import { CourbesTab } from "./CourbesTab";
 import { PositionsTab } from "./PositionsTab";
 import { HistoriqueTab } from "./HistoriqueTab";
 import { LatenceTab } from "./LatenceTab";
+import { EngineBTB3Tab } from "./EngineBTB3Tab";
 import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
@@ -277,6 +278,7 @@ export function LiveDashboard({
           { label: "Positions", content: <PositionsTab positions={openPositions} /> },
           { label: "Historique", content: <HistoriqueTab symbols={symbols} /> },
           { label: "Latence", content: <LatenceTab /> },
+          { label: "ENGINEBTB3", content: <EngineBTB3Tab /> },
           { label: "Journal", content: journal },
         ]}
       />
