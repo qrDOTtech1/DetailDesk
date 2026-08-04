@@ -54,6 +54,20 @@ export async function toggleRiskFree(formData: FormData) {
   revalidatePath("/admin/mmtrade");
 }
 
+export async function toggleMarketMaker(formData: FormData) {
+  await requirePlatformAdmin();
+  const enabled = formData.get("enabled") === "true";
+  await callBot("/api/marketmaker", { method: "POST", body: JSON.stringify({ enabled: !enabled }) });
+  revalidatePath("/admin/mmtrade");
+}
+
+export async function toggleDeltaNeutral(formData: FormData) {
+  await requirePlatformAdmin();
+  const enabled = formData.get("enabled") === "true";
+  await callBot("/api/deltaneutral", { method: "POST", body: JSON.stringify({ enabled: !enabled }) });
+  revalidatePath("/admin/mmtrade");
+}
+
 export async function resetKillswitch() {
   await requirePlatformAdmin();
   await callBot("/api/killswitch/reset", { method: "POST" });

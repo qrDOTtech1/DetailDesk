@@ -6,7 +6,7 @@ import { PositionsTab } from "./PositionsTab";
 import { HistoriqueTab } from "./HistoriqueTab";
 import { LatenceTab } from "./LatenceTab";
 import { EngineBTB3Tab } from "./EngineBTB3Tab";
-import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree } from "./actions";
+import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree, toggleMarketMaker, toggleDeltaNeutral } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
 const MODE_STYLE: Record<string, string> = {
@@ -179,6 +179,29 @@ export function LiveDashboard({
             <button className="ml-auto rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20">Enregistrer</button>
           </div>
         </form>
+      </Card>
+
+      {/* Strategies avancees (Steven 04/08, presentes dans le dash local mais
+          absentes ici) : Market Maker (cotation continue) et Delta Neutral
+          (paire Up/Down synthetique). OFF par defaut ici comme sur le bot --
+          je ne les active jamais moi-meme. */}
+      <Card>
+        <div className="text-sm font-medium">Strategies avancees</div>
+        <div className="mt-1 text-[11px] text-zinc-500">Desactivees par defaut -- distinctes de l&apos;arb crypto 5min ci-dessous.</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <form action={toggleMarketMaker}>
+            <input type="hidden" name="enabled" value={String(!!snapshot.mm?.enabled)} />
+            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.mm?.enabled ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
+              Market Maker {snapshot.mm?.enabled ? "ON" : "off"}{snapshot.mm?.killed ? " (tue)" : ""}
+            </button>
+          </form>
+          <form action={toggleDeltaNeutral}>
+            <input type="hidden" name="enabled" value={String(!!snapshot.dn?.enabled)} />
+            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.dn?.enabled ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
+              Delta Neutral {snapshot.dn?.enabled ? "ON" : "off"}
+            </button>
+          </form>
+        </div>
       </Card>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
