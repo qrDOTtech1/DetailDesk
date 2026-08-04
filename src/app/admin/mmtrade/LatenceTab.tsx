@@ -89,10 +89,22 @@ export function LatenceTab() {
               <div className="mt-1 text-[10px] text-zinc-600">{eq.stats.filled}/{eq.stats.attempted} paires</div>
             </Card>
             <Card>
+              <div className="text-[11px] text-zinc-500">Remplissage partiel</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums">{eq.stats.partial_fill_rate_pct ?? "-"}%</div>
+              <div className="mt-1 text-[10px] text-zinc-600">{eq.stats.partial_fill_count} cas</div>
+            </Card>
+            <Card>
               <div className="text-[11px] text-zinc-500">EV net de fees (moy.)</div>
               <div className={`mt-1 text-xl font-semibold tabular-nums ${(eq.stats.avg_ev_net_fees_pct ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {eq.stats.avg_ev_net_fees_pct}%
               </div>
+            </Card>
+            <Card>
+              <div className="text-[11px] text-zinc-500">EV net fees+slippage (moy.)</div>
+              <div className={`mt-1 text-xl font-semibold tabular-nums ${(eq.stats.avg_ev_net_slippage_pct ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {eq.stats.avg_ev_net_slippage_pct}%
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-600">pire cas realiste</div>
             </Card>
             <Card>
               <div className="text-[11px] text-zinc-500">Fraicheur donnees (moy.)</div>
@@ -101,6 +113,22 @@ export function LatenceTab() {
             <Card>
               <div className="text-[11px] text-zinc-500">Fraicheur donnees (max)</div>
               <div className="mt-1 text-xl font-semibold tabular-nums text-amber-400">{eq.stats.max_feed_age_ms}ms</div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {eq?.stats && (eq.stats.avg_adverse_excursion_pct !== null || eq.stats.avg_favorable_excursion_pct !== null) && (
+        <div>
+          <div className="mb-2 text-sm font-medium">Excursion de prix apres entree</div>
+          <div className="grid grid-cols-2 gap-3">
+            <Card>
+              <div className="text-[11px] text-zinc-500">Adverse (moy.) -- pire mouvement contre nous</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums text-red-400">{eq.stats.avg_adverse_excursion_pct}%</div>
+            </Card>
+            <Card>
+              <div className="text-[11px] text-zinc-500">Favorable (moy.) -- meilleur mouvement pour nous</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums text-emerald-400">{eq.stats.avg_favorable_excursion_pct}%</div>
             </Card>
           </div>
         </div>
