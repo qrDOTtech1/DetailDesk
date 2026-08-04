@@ -6,7 +6,7 @@ import { PositionsTab } from "./PositionsTab";
 import { HistoriqueTab } from "./HistoriqueTab";
 import { LatenceTab } from "./LatenceTab";
 import { EngineBTB3Tab } from "./EngineBTB3Tab";
-import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor } from "./actions";
+import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
 const MODE_STYLE: Record<string, string> = {
@@ -216,6 +216,30 @@ export function LiveDashboard({
                   </button>
                 ))}
               </form>
+              <div className="mt-2 flex items-center gap-1.5">
+                <form action={toggleOpportunity}>
+                  <input type="hidden" name="symbol" value={sym} />
+                  <input type="hidden" name="enabled" value={String(!!mk.opportunity)} />
+                  <button
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                      mk.opportunity ? "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"
+                    }`}
+                  >
+                    opportunité {mk.opportunity ? "ON" : "off"}
+                  </button>
+                </form>
+                <form action={toggleRiskFree}>
+                  <input type="hidden" name="symbol" value={sym} />
+                  <input type="hidden" name="enabled" value={String(!!mk.risk_free)} />
+                  <button
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                      mk.risk_free ? "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"
+                    }`}
+                  >
+                    risk-free {mk.risk_free ? "ON" : "off"}
+                  </button>
+                </form>
+              </div>
             </Card>
           );
         })}

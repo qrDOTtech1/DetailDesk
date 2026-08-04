@@ -28,9 +28,10 @@ export function PositionsTab({ positions }: { positions: any[] }) {
               <span className="text-zinc-500">{p.strat ?? "-"}</span>
             </div>
             <Sparkline symbol={`entree ${Number(p.entry_price ?? 0).toFixed(3)}`} points={pts} strike={p.entry_price} />
-            <div className="mt-2 grid grid-cols-2 gap-2 text-center text-[11px] text-zinc-400">
-              <div><div className="text-zinc-200 tabular-nums">{Number(p.filled_shares ?? 0).toFixed(2)}</div>parts</div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-400">
+              <div><div className="text-zinc-200 tabular-nums">{Number(p.filled_shares ?? 0).toFixed(2)}</div>parts (sizing reel)</div>
               <div><div className="text-zinc-200 tabular-nums">{Number(p.cost ?? 0).toFixed(2)}$</div>engage</div>
+              <div><div className="text-zinc-200 tabular-nums">{p.pnl_tp_stage ?? 0}</div>palier TP</div>
             </div>
           </Card>
         );

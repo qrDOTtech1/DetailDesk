@@ -38,6 +38,22 @@ export async function setSymbolMode(formData: FormData) {
   revalidatePath("/admin/mmtrade");
 }
 
+export async function toggleOpportunity(formData: FormData) {
+  await requirePlatformAdmin();
+  const symbol = String(formData.get("symbol"));
+  const enabled = formData.get("enabled") === "true";
+  await callBot("/api/opportunity", { method: "POST", body: JSON.stringify({ symbol, enabled: !enabled }) });
+  revalidatePath("/admin/mmtrade");
+}
+
+export async function toggleRiskFree(formData: FormData) {
+  await requirePlatformAdmin();
+  const symbol = String(formData.get("symbol"));
+  const enabled = formData.get("enabled") === "true";
+  await callBot("/api/risk-free", { method: "POST", body: JSON.stringify({ symbol, enabled: !enabled }) });
+  revalidatePath("/admin/mmtrade");
+}
+
 export async function resetKillswitch() {
   await requirePlatformAdmin();
   await callBot("/api/killswitch/reset", { method: "POST" });
