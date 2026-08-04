@@ -44,6 +44,15 @@ export async function resetKillswitch() {
   revalidatePath("/admin/mmtrade");
 }
 
+export async function setFloor(formData: FormData) {
+  await requirePlatformAdmin();
+  // le bot accepte 0 explicitement (voir set_floor : "if not (0 <= v <= 100000)")
+  // -> laisser la valeur telle quelle, ne PAS la traiter comme falsy/absente.
+  const floor = Number(formData.get("floor"));
+  await callBot("/api/floor", { method: "POST", body: JSON.stringify({ floor }) });
+  revalidatePath("/admin/mmtrade");
+}
+
 export async function updateKillswitchConfig(formData: FormData) {
   await requirePlatformAdmin();
   const body = {

@@ -1,16 +1,17 @@
 import { requirePlatformAdmin } from "@/lib/auth";
 import { AutoRefresh } from "./AutoRefresh";
-import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig } from "./actions";
+import { Tabs } from "./Tabs";
+import { Sparkline } from "./Sparkline";
+import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor } from "./actions";
 import { normalizeBotUrl } from "./botUrl";
 
 // Proxy serveur -> bot MMTRADE (Steven 04/08) : le token ne sort JAMAIS vers
-// le navigateur. Service Railway DEDIE (repo MMTV1, separe de DetailDesk),
-// joignable via le RESEAU PRIVE Railway, jamais expose publiquement.
+// le navigateur. Service Railway DEDIE (repo MMTV1, separe de DetailDesk).
 async function fetchBot(path: string) {
   const rawBase = process.env.MMTRADE_API_URL;
   const token = process.env.MMTRADE_API_TOKEN;
   if (!rawBase || !token) {
-    return { error: "MMTRADE_API_URL / MMTRADE_API_TOKEN non configures (URL reseau prive Railway du service MMTV1)" };
+    return { error: "MMTRADE_API_URL / MMTRADE_API_TOKEN non configures" };
   }
   const base = normalizeBotUrl(rawBase);
   try {
@@ -34,9 +35,7 @@ const MODE_STYLE: Record<string, string> = {
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      className={`rounded-2xl border border-white/8 bg-white/[0.03] p-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] backdrop-blur-sm ${className}`}
-    >
+    <div className={`rounded-2xl border border-white/8 bg-white/[0.03] p-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] backdrop-blur-sm ${className}`}>
       {children}
     </div>
   );
@@ -50,11 +49,12 @@ function Money({ v }: { v: number | undefined }) {
 export default async function MMTradePage() {
   await requirePlatformAdmin();
 
-  const [snapshot, precheck, killswitch, logs] = await Promise.all([
+  const [snapshot, precheck, killswitch, logs, curves] = await Promise.all([
     fetchBot("/api/snapshot"),
     fetchBot("/api/precheck"),
     fetchBot("/api/killswitch"),
-    fetchBot("/api/log?n=50"),
+    fetchBot("/api/log?n=200"),
+    fetchBot("/api/curve?range=1800"),
   ]);
 
   if (snapshot?.error) {
@@ -64,9 +64,9 @@ export default async function MMTradePage() {
         <Card className="border-red-500/20 bg-red-500/[0.06]">
           <div className="text-sm text-red-300">Bot injoignable : {snapshot.error}</div>
           <div className="mt-2 text-xs text-zinc-500">
-            Configure MMTRADE_API_URL (hostname reseau prive Railway du service MMTV1, ex.
-            http://mmtv1.railway.internal:8787) et MMTRADE_API_TOKEN (= GHOST_API_TOKEN du bot) dans les
-            variables Railway de DetailDesk.
+            Configure MMTRADE_API_URL (domaine public Railway du service MMTV1, ex.
+            mmtv1-production.up.railway.app) et MMTRADE_API_TOKEN (= meme valeur sur les 2 services)
+            dans les variables Railway de DetailDesk.
           </div>
         </Card>
       </div>
@@ -78,51 +78,20 @@ export default async function MMTradePage() {
   const symbols = Object.keys(modes);
   const ks = killswitch?.config ?? {};
   const triggered = killswitch?.triggered;
+  const floor = snapshot.floor ?? 0;
 
-  // Trades recents, tous symboles confondus, tries par date desc
   const allTrades = symbols
     .flatMap((sym) => (markets[sym]?.trades ?? []).map((t: any) => ({ ...t, __sym: sym })))
     .filter((t: any) => t.mode === "real")
     .sort((a: any, b: any) => (b.opened_ts ?? b.ts ?? 0) - (a.opened_ts ?? a.ts ?? 0))
-    .slice(0, 15);
+    .slice(0, 30);
 
   const totalReal = symbols.reduce((s, sym) => s + (markets[sym]?.pnl_total_real ?? 0), 0);
   const openPositions = symbols.flatMap((sym) => (markets[sym]?.open ?? []).map((p: any) => ({ ...p, __sym: sym })));
+  const curveList: any[] = Array.isArray(curves) ? curves : [];
 
-  return (
-    <div className="space-y-5" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif" }}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold tracking-tight">MMTrade V1</h1>
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-              snapshot.running ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/5 text-zinc-500 ring-1 ring-white/10"
-            }`}
-          >
-            {snapshot.running ? "en cours" : "arrete"}
-          </span>
-          {triggered && (
-            <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-medium text-red-300 ring-1 ring-red-500/30">
-              kill-switch declenche
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <AutoRefresh seconds={8} />
-          <form action={startBot}>
-            <button className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25">
-              Demarrer
-            </button>
-          </form>
-          <form action={stopBot}>
-            <button className="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 ring-1 ring-red-500/30 transition hover:bg-red-500/25">
-              Arreter
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* Stat tiles */}
+  const overview = (
+    <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card>
           <div className="text-[11px] text-zinc-500">Cash</div>
@@ -149,6 +118,29 @@ export default async function MMTradePage() {
         dollars sur une session). Se referer a l&apos;historique Polymarket reel pour toute decision de capital.
       </div>
 
+      {/* Plancher de capital -- reglable ici, jusqu'a 0 (Steven 04/08) */}
+      <Card>
+        <div className="text-sm font-medium">Plancher de capital</div>
+        <div className="mt-1 text-[11px] text-zinc-500">
+          Le bot refuse d&apos;engager du capital sous ce plancher (precheck &quot;solde &lt;= plancher&quot;).
+          Mets 0 pour desactiver la protection.
+        </div>
+        <form action={setFloor} className="mt-3 flex items-center gap-2">
+          <input
+            name="floor"
+            type="number"
+            step="0.5"
+            min="0"
+            defaultValue={floor}
+            className="w-28 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-zinc-100"
+          />
+          <span className="text-xs text-zinc-500">$ actuellement : {floor}$</span>
+          <button className="ml-auto rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20">
+            Enregistrer
+          </button>
+        </form>
+      </Card>
+
       {/* Kill-switch */}
       <Card>
         <div className="flex items-center justify-between">
@@ -162,39 +154,20 @@ export default async function MMTradePage() {
           ) : null}
         </div>
         {triggered && (
-          <div className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">
-            Declenche : {triggered.reason}
-          </div>
+          <div className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">Declenche : {triggered.reason}</div>
         )}
         <form action={updateKillswitchConfig} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
             Plancher cash ($)
-            <input
-              name="cash_floor_usd"
-              type="number"
-              step="0.1"
-              defaultValue={ks.cash_floor_usd}
-              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-100"
-            />
+            <input name="cash_floor_usd" type="number" step="0.1" defaultValue={ks.cash_floor_usd} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-100" />
           </label>
           <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
             Perte session max ($)
-            <input
-              name="max_session_loss_usd"
-              type="number"
-              step="0.5"
-              defaultValue={ks.max_session_loss_usd}
-              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-100"
-            />
+            <input name="max_session_loss_usd" type="number" step="0.5" defaultValue={ks.max_session_loss_usd} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-100" />
           </label>
           <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
             Pertes consec. max
-            <input
-              name="max_global_consec_losses"
-              type="number"
-              defaultValue={ks.max_global_consec_losses}
-              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-100"
-            />
+            <input name="max_global_consec_losses" type="number" defaultValue={ks.max_global_consec_losses} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-100" />
           </label>
           <div className="flex items-end gap-2">
             <label className="flex items-center gap-1.5 text-[11px] text-zinc-400">
@@ -208,7 +181,6 @@ export default async function MMTradePage() {
         </form>
       </Card>
 
-      {/* Symbols */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {symbols.map((sym) => {
           const mk = markets[sym] ?? {};
@@ -217,37 +189,20 @@ export default async function MMTradePage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{sym}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${MODE_STYLE[modes[sym]] ?? MODE_STYLE.off}`}>
-                    {modes[sym]}
-                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${MODE_STYLE[modes[sym]] ?? MODE_STYLE.off}`}>{modes[sym]}</span>
                   {mk.risk_free && (
-                    <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-300 ring-1 ring-sky-500/30">
-                      risk-free
-                    </span>
+                    <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-300 ring-1 ring-sky-500/30">risk-free</span>
                   )}
                 </div>
                 <span className="text-sm font-semibold tabular-nums"><Money v={mk.pnl_total_real} /></span>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-400">
-                <div>
-                  <div className="text-zinc-200 tabular-nums">{mk.trades_done_real ?? 0}</div>
-                  trades
-                </div>
-                <div>
-                  <div className="text-emerald-400 tabular-nums">{mk.wins_real ?? 0}</div>
-                  wins
-                </div>
-                <div>
-                  <div className="text-red-400 tabular-nums">{(mk.trades_done_real ?? 0) - (mk.wins_real ?? 0)}</div>
-                  losses
-                </div>
+                <div><div className="text-zinc-200 tabular-nums">{mk.trades_done_real ?? 0}</div>trades</div>
+                <div><div className="text-emerald-400 tabular-nums">{mk.wins_real ?? 0}</div>wins</div>
+                <div><div className="text-red-400 tabular-nums">{(mk.trades_done_real ?? 0) - (mk.wins_real ?? 0)}</div>losses</div>
               </div>
-              {mk.consec_losses > 0 && (
-                <div className="mt-2 text-[11px] text-amber-400">{mk.consec_losses} perte(s) consecutive(s)</div>
-              )}
-              {mk.stopped && (
-                <div className="mt-1 text-[11px] text-red-400">stoppe : {mk.stop_reason}</div>
-              )}
+              {mk.consec_losses > 0 && <div className="mt-2 text-[11px] text-amber-400">{mk.consec_losses} perte(s) consecutive(s)</div>}
+              {mk.stopped && <div className="mt-1 text-[11px] text-red-400">stoppe : {mk.stop_reason}</div>}
               <form action={setSymbolMode} className="mt-3 flex items-center gap-1.5">
                 <input type="hidden" name="symbol" value={sym} />
                 {MODES.map((m) => (
@@ -267,21 +222,37 @@ export default async function MMTradePage() {
           );
         })}
       </div>
+    </div>
+  );
 
-      {/* Open positions */}
-      {openPositions.length > 0 && (
-        <Card>
-          <div className="mb-2 text-sm font-medium">Positions ouvertes ({openPositions.length})</div>
+  const courbes = (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {curveList.length === 0 && (
+        <Card><div className="text-xs text-zinc-500">Pas encore de donnees de courbe (le bot vient peut-etre de demarrer).</div></Card>
+      )}
+      {curveList.map((c: any) => (
+        <Card key={c.symbol}>
+          <Sparkline
+            symbol={c.symbol}
+            points={(c.points ?? []).map((p: any) => ({ ts: p.ts, price: p.price }))}
+            strike={c.strikes?.[c.strikes.length - 1]?.strike}
+          />
+        </Card>
+      ))}
+    </div>
+  );
+
+  const positionsEtTrades = (
+    <div className="space-y-5">
+      <Card>
+        <div className="mb-2 text-sm font-medium">Positions ouvertes ({openPositions.length})</div>
+        {openPositions.length === 0 ? (
+          <div className="text-xs text-zinc-500">Aucune position ouverte.</div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-left text-zinc-500">
-                <tr>
-                  <th className="pb-1 pr-3">Symbole</th>
-                  <th className="pb-1 pr-3">Cote</th>
-                  <th className="pb-1 pr-3">Entree</th>
-                  <th className="pb-1 pr-3">Parts</th>
-                  <th className="pb-1">Strategie</th>
-                </tr>
+                <tr><th className="pb-1 pr-3">Symbole</th><th className="pb-1 pr-3">Cote</th><th className="pb-1 pr-3">Entree</th><th className="pb-1 pr-3">Parts</th><th className="pb-1">Strategie</th></tr>
               </thead>
               <tbody className="text-zinc-300">
                 {openPositions.map((p: any, i: number) => (
@@ -296,24 +267,18 @@ export default async function MMTradePage() {
               </tbody>
             </table>
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
 
-      {/* Recent trades */}
       <Card>
-        <div className="mb-2 text-sm font-medium">Trades reels recents</div>
+        <div className="mb-2 text-sm font-medium">Trades reels recents ({allTrades.length})</div>
         {allTrades.length === 0 ? (
           <div className="text-xs text-zinc-500">Aucun trade reel encore.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-left text-zinc-500">
-                <tr>
-                  <th className="pb-1 pr-3">Symbole</th>
-                  <th className="pb-1 pr-3">Cote</th>
-                  <th className="pb-1 pr-3">PnL</th>
-                  <th className="pb-1">Resultat</th>
-                </tr>
+                <tr><th className="pb-1 pr-3">Symbole</th><th className="pb-1 pr-3">Cote</th><th className="pb-1 pr-3">PnL</th><th className="pb-1">Resultat</th></tr>
               </thead>
               <tbody className="text-zinc-300">
                 {allTrades.map((t: any, i: number) => (
@@ -321,9 +286,7 @@ export default async function MMTradePage() {
                     <td className="py-1 pr-3 font-medium">{t.__sym}</td>
                     <td className="py-1 pr-3">{t.side ?? "-"}</td>
                     <td className="py-1 pr-3 tabular-nums"><Money v={t.pnl} /></td>
-                    <td className="py-1">
-                      <span className={t.win ? "text-emerald-400" : "text-red-400"}>{t.win ? "gain" : "perte"}</span>
-                    </td>
+                    <td className="py-1"><span className={t.win ? "text-emerald-400" : "text-red-400"}>{t.win ? "gain" : "perte"}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -331,20 +294,54 @@ export default async function MMTradePage() {
           </div>
         )}
       </Card>
+    </div>
+  );
 
-      {/* Log tail */}
-      <Card>
-        <div className="mb-2 text-sm font-medium">Journal recent</div>
-        {Array.isArray(logs) ? (
-          <div className="max-h-72 overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
-            {logs.slice(-50).map((l: string, i: number) => (
-              <div key={i} className="whitespace-pre-wrap break-all">{l}</div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-xs text-zinc-500">Journal indisponible : {logs?.error}</div>
-        )}
-      </Card>
+  const journal = (
+    <Card>
+      {Array.isArray(logs) ? (
+        <div className="max-h-[32rem] overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
+          {logs.map((l: string, i: number) => (
+            <div key={i} className="whitespace-pre-wrap break-all">{l}</div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-xs text-zinc-500">Journal indisponible : {logs?.error}</div>
+      )}
+    </Card>
+  );
+
+  return (
+    <div className="space-y-5" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold tracking-tight">MMTrade V1</h1>
+          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${snapshot.running ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/5 text-zinc-500 ring-1 ring-white/10"}`}>
+            {snapshot.running ? "en cours" : "arrete"}
+          </span>
+          {triggered && (
+            <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-medium text-red-300 ring-1 ring-red-500/30">kill-switch declenche</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <AutoRefresh seconds={8} />
+          <form action={startBot}>
+            <button className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25">Demarrer</button>
+          </form>
+          <form action={stopBot}>
+            <button className="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 ring-1 ring-red-500/30 transition hover:bg-red-500/25">Arreter</button>
+          </form>
+        </div>
+      </div>
+
+      <Tabs
+        tabs={[
+          { label: "Vue d'ensemble", content: overview },
+          { label: "Courbes", content: courbes },
+          { label: "Positions & Trades", content: positionsEtTrades },
+          { label: "Journal", content: journal },
+        ]}
+      />
     </div>
   );
 }
