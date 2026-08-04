@@ -1,16 +1,18 @@
 import { requirePlatformAdmin } from "@/lib/auth";
 import { AutoRefresh } from "./AutoRefresh";
 import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig } from "./actions";
+import { normalizeBotUrl } from "./botUrl";
 
 // Proxy serveur -> bot MMTRADE (Steven 04/08) : le token ne sort JAMAIS vers
 // le navigateur. Service Railway DEDIE (repo MMTV1, separe de DetailDesk),
 // joignable via le RESEAU PRIVE Railway, jamais expose publiquement.
 async function fetchBot(path: string) {
-  const base = process.env.MMTRADE_API_URL;
+  const rawBase = process.env.MMTRADE_API_URL;
   const token = process.env.MMTRADE_API_TOKEN;
-  if (!base || !token) {
+  if (!rawBase || !token) {
     return { error: "MMTRADE_API_URL / MMTRADE_API_TOKEN non configures (URL reseau prive Railway du service MMTV1)" };
   }
+  const base = normalizeBotUrl(rawBase);
   try {
     const res = await fetch(`${base}${path}`, {
       headers: { Authorization: `Bearer ${token}` },

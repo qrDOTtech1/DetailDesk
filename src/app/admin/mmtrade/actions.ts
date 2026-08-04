@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePlatformAdmin } from "@/lib/auth";
+import { normalizeBotUrl } from "./botUrl";
 
 async function callBot(path: string, options: RequestInit = {}) {
-  const base = process.env.MMTRADE_API_URL;
+  const rawBase = process.env.MMTRADE_API_URL;
   const token = process.env.MMTRADE_API_TOKEN;
-  if (!base || !token) throw new Error("MMTRADE_API_URL / MMTRADE_API_TOKEN non configures");
+  if (!rawBase || !token) throw new Error("MMTRADE_API_URL / MMTRADE_API_TOKEN non configures");
+  const base = normalizeBotUrl(rawBase);
   const res = await fetch(`${base}${path}`, {
     ...options,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...options.headers },
