@@ -132,12 +132,68 @@ export function RealHistoryTab() {
     { key: "cost", label: "Cout" },
   ];
 
+  const summary = data?.summary;
+  const netByMarket: any[] = data?.net_pnl_by_market ?? [];
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 text-[11px] text-sky-300">
         Source : Polymarket data-api (lecture seule, publique, on-chain) -- c&apos;est la verite terrain, a preferer
         au PnL interne du bot en cas de divergence.
       </div>
+
+      {summary && (
+        <Card>
+          <div className="mb-2 text-sm font-medium">PnL net reel (achats vs ventes + resolutions)</div>
+          <p className="mb-3 text-[10.5px] leading-relaxed text-zinc-600">
+            Corrige le 04/08 (Steven, &quot;eth la par ex a fait bien + que 20c de gain&quot;) : les paiements de
+            resolution (REDEEM, quand une position gardee jusqu&apos;au bout GAGNE) ont un prix a 0 dans le flux brut
+            Polymarket -- l&apos;ancien calcul les comptait a 0$ au lieu du vrai montant paye, sous-estimant fortement
+            les gains reels. Desormais base sur le montant USDC reel de chaque evenement, resolutions incluses.
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <StatTile label="PnL net total" value={`${summary.net_total >= 0 ? "+" : ""}${summary.net_total.toFixed(2)}$`} tone={summary.net_total >= 0 ? "up" : "down"} />
+            <StatTile label="Positions gagnantes" value={summary.wins_count} tone="up" />
+            <StatTile label="Gains cumules" value={`+${summary.wins_sum.toFixed(2)}$`} tone="up" />
+            <StatTile label="Pertes cumulees" value={`${summary.losses_sum.toFixed(2)}$`} tone="down" />
+          </div>
+        </Card>
+      )}
+
+      {netByMarket.length > 0 && (
+        <Card>
+          <div className="mb-2 text-xs font-medium text-zinc-300">PnL par position (achats + ventes + resolution), pires en premier</div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-[11px]">
+              <thead>
+                <tr className="border-b border-white/8 text-zinc-500">
+                  <th className="px-2 py-1.5 font-medium">Marche</th>
+                  <th className="px-2 py-1.5 font-medium">Issue</th>
+                  <th className="px-2 py-1.5 font-medium">Achete</th>
+                  <th className="px-2 py-1.5 font-medium">Vendu</th>
+                  <th className="px-2 py-1.5 font-medium">Resolution</th>
+                  <th className="px-2 py-1.5 font-medium">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {netByMarket.slice(0, 15).map((r, i) => (
+                  <tr key={i} className="border-b border-white/5 text-zinc-300">
+                    <td className="max-w-[200px] truncate px-2 py-1.5 text-zinc-100" title={r.market}>{r.market}</td>
+                    <td className="px-2 py-1.5 text-zinc-500">{r.outcome}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{r.buy.toFixed(2)}$</td>
+                    <td className="px-2 py-1.5 tabular-nums">{r.sell.toFixed(2)}$</td>
+                    <td className="px-2 py-1.5 tabular-nums">{r.redeem.toFixed(2)}$</td>
+                    <td className={`px-2 py-1.5 tabular-nums font-medium ${r.net_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {r.net_pnl >= 0 ? "+" : ""}
+                      {r.net_pnl.toFixed(2)}$
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <input
