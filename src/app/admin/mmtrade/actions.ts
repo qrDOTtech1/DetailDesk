@@ -68,6 +68,27 @@ export async function toggleDeltaNeutral(formData: FormData) {
   revalidatePath("/admin/mmtrade");
 }
 
+export async function toggleUltrapoly(formData: FormData) {
+  await requirePlatformAdmin();
+  const enabled = formData.get("enabled") === "true";
+  await callBot("/api/ultrapoly", { method: "POST", body: JSON.stringify({ enabled: !enabled }) });
+  revalidatePath("/admin/mmtrade");
+}
+
+export async function toggleUltrapolyReal(formData: FormData) {
+  await requirePlatformAdmin();
+  const enabled = formData.get("enabled") === "true";
+  await callBot("/api/ultrapoly-real", { method: "POST", body: JSON.stringify({ enabled: !enabled }) });
+  revalidatePath("/admin/mmtrade");
+}
+
+export async function setArbBudget(formData: FormData) {
+  await requirePlatformAdmin();
+  const arb_budget = Number(formData.get("arb_budget"));
+  await callBot("/api/arb-budget", { method: "POST", body: JSON.stringify({ arb_budget }) });
+  revalidatePath("/admin/mmtrade");
+}
+
 export async function resetKillswitch() {
   await requirePlatformAdmin();
   await callBot("/api/killswitch/reset", { method: "POST" });

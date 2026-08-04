@@ -6,7 +6,7 @@ import { PositionsTab } from "./PositionsTab";
 import { HistoriqueTab } from "./HistoriqueTab";
 import { LatenceTab } from "./LatenceTab";
 import { EngineBTB3Tab } from "./EngineBTB3Tab";
-import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree, toggleMarketMaker, toggleDeltaNeutral } from "./actions";
+import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree, toggleMarketMaker, toggleDeltaNeutral, toggleUltrapoly, toggleUltrapolyReal, setArbBudget } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
 const MODE_STYLE: Record<string, string> = {
@@ -201,7 +201,35 @@ export function LiveDashboard({
               Delta Neutral {snapshot.dn?.enabled ? "ON" : "off"}
             </button>
           </form>
+          <form action={toggleUltrapoly}>
+            <input type="hidden" name="enabled" value={String(!!snapshot.ultrapoly)} />
+            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.ultrapoly ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
+              Ultrapoly {snapshot.ultrapoly ? "ON" : "off"}
+            </button>
+          </form>
+          <form action={toggleUltrapolyReal}>
+            <input type="hidden" name="enabled" value={String(!!snapshot.ultrapoly_real)} />
+            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.ultrapoly_real ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
+              Ultrapoly reel {snapshot.ultrapoly_real ? "ON" : "off"}
+            </button>
+          </form>
         </div>
+      </Card>
+
+      <Card>
+        <div className="text-sm font-medium">Budget arb par tentative</div>
+        <form action={setArbBudget} className="mt-3 flex items-center gap-2">
+          <input
+            name="arb_budget"
+            type="number"
+            step="0.5"
+            min="0"
+            defaultValue={snapshot.arb_budget}
+            className="w-28 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-zinc-100"
+          />
+          <span className="text-xs text-zinc-500">$ actuellement : {snapshot.arb_budget}$</span>
+          <button className="ml-auto rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20">Enregistrer</button>
+        </form>
       </Card>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

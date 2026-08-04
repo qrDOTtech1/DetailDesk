@@ -14,31 +14,64 @@ function Money({ v }: { v: number | undefined }) {
   return <span className={n >= 0 ? "text-emerald-400" : "text-red-400"}>{n >= 0 ? "+" : ""}{n.toFixed(3)}$</span>;
 }
 
+const SORT_OPTIONS = [
+  ["opened_ts", "Date"],
+  ["pnl", "PnL"],
+  ["cost", "Cout"],
+  ["filled_shares", "Parts"],
+  ["entry_price", "Prix entree"],
+  ["symbol", "Symbole"],
+] as const;
+
 export function HistoriqueTab({ symbols }: { symbols: string[] }) {
   const [page, setPage] = useState(1);
   const [symbol, setSymbol] = useState("");
   const [mode, setMode] = useState("");
   const [win, setWin] = useState("");
+  const [q, setQ] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [sortBy, setSortBy] = useState("opened_ts");
+  const [sortDir, setSortDir] = useState("desc");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), per_page: "25", sort_by: "opened_ts", sort_dir: "desc" });
+    const params = new URLSearchParams({ page: String(page), per_page: "25", sort_by: sortBy, sort_dir: sortDir });
     if (symbol) params.set("symbol", symbol);
     if (mode) params.set("mode", mode);
     if (win) params.set("win", win);
-    fetch(`/admin/mmtrade/trades?${params}`)
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false));
-  }, [page, symbol, mode, win]);
+    if (q) params.set("q", q);
+    if (fromDate) params.set("from_date", fromDate);
+    if (toDate) params.set("to_date", toDate);
+    const t = setTimeout(() => {
+      fetch(`/admin/mmtrade/trades?${params}`)
+        .then((r) => r.json())
+        .then(setData)
+        .finally(() => setLoading(false));
+    }, q ? 300 : 0); // debounce sur la recherche texte, pas sur les autres filtres
+    return () => clearTimeout(t);
+  }, [page, symbol, mode, win, q, fromDate, toDate, sortBy, sortDir]);
 
   const stats = data?.stats;
+  const exportParams = new URLSearchParams({ format: "csv" });
+  if (symbol) exportParams.set("symbol", symbol);
+  if (mode) exportParams.set("mode", mode);
+  if (win) exportParams.set("win", win);
+  if (q) exportParams.set("q", q);
+  if (fromDate) exportParams.set("from_date", fromDate);
+  if (toDate) exportParams.set("to_date", toDate);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setPage(1); }}
+          placeholder="Rechercher (slug, cote...)"
+          className="min-w-[160px] flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600"
+        />
         <select value={symbol} onChange={(e) => { setSymbol(e.target.value); setPage(1); }} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-200">
           <option value="">Tous symboles</option>
           {symbols.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -53,9 +86,35 @@ export function HistoriqueTab({ symbols }: { symbols: string[] }) {
           <option value="true">Gains seulement</option>
           <option value="false">Pertes seulement</option>
         </select>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          Du
+          <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1); }} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200" />
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          Au
+          <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1); }} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200" />
+        </label>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-200">
+          {SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>Trier : {l}</option>)}
+        </select>
+        <select value={sortDir} onChange={(e) => setSortDir(e.target.value)} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-200">
+          <option value="desc">Descendant</option>
+          <option value="asc">Ascendant</option>
+        </select>
+        {(fromDate || toDate || q || symbol || mode || win) && (
+          <button
+            onClick={() => { setQ(""); setFromDate(""); setToDate(""); setSymbol(""); setMode(""); setWin(""); setPage(1); }}
+            className="rounded-full bg-white/5 px-3 py-1 text-[11px] text-zinc-400 hover:bg-white/10"
+          >
+            Reinitialiser
+          </button>
+        )}
         {data?.total !== undefined && (
           <a
-            href={`/admin/mmtrade/trades/export?format=csv${symbol ? `&symbol=${symbol}` : ""}${mode ? `&mode=${mode}` : ""}`}
+            href={`/admin/mmtrade/trades/export?${exportParams}`}
             className="ml-auto rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20"
           >
             Exporter CSV
