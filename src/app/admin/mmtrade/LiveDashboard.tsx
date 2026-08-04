@@ -6,7 +6,14 @@ import { PositionsTab } from "./PositionsTab";
 import { HistoriqueTab } from "./HistoriqueTab";
 import { LatenceTab } from "./LatenceTab";
 import { EngineBTB3Tab } from "./EngineBTB3Tab";
-import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree, toggleMarketMaker, toggleDeltaNeutral, toggleUltrapoly, toggleUltrapolyReal, setArbBudget } from "./actions";
+import { PrevisionsTab } from "./PrevisionsTab";
+import { RealHistoryTab } from "./RealHistoryTab";
+import { StrategiesTab } from "./StrategiesTab";
+import { SystemTab } from "./SystemTab";
+import { WatchTab } from "./WatchTab";
+import { DocumentationTab } from "./DocumentationTab";
+import { JournalTab } from "./JournalTab";
+import { startBot, stopBot, setSymbolMode, resetKillswitch, updateKillswitchConfig, setFloor, toggleOpportunity, toggleRiskFree } from "./actions";
 
 const MODES = ["off", "paper", "real"] as const;
 const MODE_STYLE: Record<string, string> = {
@@ -51,7 +58,6 @@ export function LiveDashboard({
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [logs, setLogs] = useState(initialLogs);
   const [connected, setConnected] = useState(false);
-  const [logSearch, setLogSearch] = useState("");
 
   // EventSource natif ne peut pas envoyer de header Authorization -> on se
   // connecte au proxy same-origin /admin/mmtrade/stream (route.ts), qui lui
@@ -157,7 +163,22 @@ export function LiveDashboard({
             </form>
           ) : null}
         </div>
-        {triggered && <div className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">Declenche : {triggered.reason}</div>}
+        {triggered && (
+          <div className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            <div>Declenche : {triggered.reason}</div>
+            {triggered.ts && (
+              <div className="mt-0.5 text-[10.5px] text-red-400/70">
+                {new Date((triggered.ts > 1e12 ? triggered.ts : triggered.ts * 1000)).toLocaleString("fr-FR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <form action={updateKillswitchConfig} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
             Plancher cash ($)
@@ -181,56 +202,9 @@ export function LiveDashboard({
         </form>
       </Card>
 
-      {/* Strategies avancees (Steven 04/08, presentes dans le dash local mais
-          absentes ici) : Market Maker (cotation continue) et Delta Neutral
-          (paire Up/Down synthetique). OFF par defaut ici comme sur le bot --
-          je ne les active jamais moi-meme. */}
-      <Card>
-        <div className="text-sm font-medium">Strategies avancees</div>
-        <div className="mt-1 text-[11px] text-zinc-500">Desactivees par defaut -- distinctes de l&apos;arb crypto 5min ci-dessous.</div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <form action={toggleMarketMaker}>
-            <input type="hidden" name="enabled" value={String(!!snapshot.mm?.enabled)} />
-            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.mm?.enabled ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
-              Market Maker {snapshot.mm?.enabled ? "ON" : "off"}{snapshot.mm?.killed ? " (tue)" : ""}
-            </button>
-          </form>
-          <form action={toggleDeltaNeutral}>
-            <input type="hidden" name="enabled" value={String(!!snapshot.dn?.enabled)} />
-            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.dn?.enabled ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
-              Delta Neutral {snapshot.dn?.enabled ? "ON" : "off"}
-            </button>
-          </form>
-          <form action={toggleUltrapoly}>
-            <input type="hidden" name="enabled" value={String(!!snapshot.ultrapoly)} />
-            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.ultrapoly ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
-              Ultrapoly {snapshot.ultrapoly ? "ON" : "off"}
-            </button>
-          </form>
-          <form action={toggleUltrapolyReal}>
-            <input type="hidden" name="enabled" value={String(!!snapshot.ultrapoly_real)} />
-            <button className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${snapshot.ultrapoly_real ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/8"}`}>
-              Ultrapoly reel {snapshot.ultrapoly_real ? "ON" : "off"}
-            </button>
-          </form>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="text-sm font-medium">Budget arb par tentative</div>
-        <form action={setArbBudget} className="mt-3 flex items-center gap-2">
-          <input
-            name="arb_budget"
-            type="number"
-            step="0.5"
-            min="0"
-            defaultValue={snapshot.arb_budget}
-            className="w-28 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-zinc-100"
-          />
-          <span className="text-xs text-zinc-500">$ actuellement : {snapshot.arb_budget}$</span>
-          <button className="ml-auto rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20">Enregistrer</button>
-        </form>
-      </Card>
+      {/* Strategies avancees, budget arb, zone danger : deplaces dans leur
+          propre onglet "Strategies" (Steven 04/08) plutot que noyes dans la
+          vue d'ensemble -- voir StrategiesTab.tsx. */}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {symbols.map((sym) => {
@@ -298,32 +272,7 @@ export function LiveDashboard({
     </div>
   );
 
-  const filteredLogs = logSearch.trim() ? logs.filter((l) => l.toLowerCase().includes(logSearch.toLowerCase())) : logs;
-
-  const journal = (
-    <Card>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <input
-          value={logSearch}
-          onChange={(e) => setLogSearch(e.target.value)}
-          placeholder="Rechercher dans le journal..."
-          className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600"
-        />
-        <span className="text-[11px] text-zinc-500">{filteredLogs.length} / {logs.length} lignes</span>
-        <a
-          href="/admin/mmtrade/logfile"
-          className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20"
-        >
-          Telecharger journal complet
-        </a>
-      </div>
-      <div className="max-h-[36rem] select-text overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
-        {filteredLogs.map((l: string, i: number) => (
-          <div key={i} className="whitespace-pre-wrap break-all">{l}</div>
-        ))}
-      </div>
-    </Card>
-  );
+  const journal = <JournalTab logs={logs} connected={connected} />;
 
   return (
     <div className="space-y-5" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif" }}>
@@ -348,13 +297,19 @@ export function LiveDashboard({
 
       <Tabs
         tabs={[
-          { label: "Vue d'ensemble", content: overview },
+          { label: "Vue d'ensemble", content: overview, badge: triggered ? "!" : undefined },
+          { label: "Horloge", content: <WatchTab cashUsdc={Number(snapshot.cash_usdc ?? 0)} totalPnl={totalReal} /> },
+          { label: "Previsions", content: <PrevisionsTab /> },
           { label: "Courbes", content: <CourbesTab priceLogBySymbol={priceLogBySymbol} /> },
-          { label: "Positions", content: <PositionsTab positions={openPositions} /> },
+          { label: "Positions", content: <PositionsTab positions={openPositions} />, badge: openPositions.length || undefined },
           { label: "Historique", content: <HistoriqueTab symbols={symbols} /> },
+          { label: "Historique reel (on-chain)", content: <RealHistoryTab /> },
           { label: "Latence", content: <LatenceTab /> },
+          { label: "Strategies", content: <StrategiesTab snapshot={snapshot} /> },
           { label: "ENGINEBTB3", content: <EngineBTB3Tab /> },
+          { label: "Systeme", content: <SystemTab snapshot={snapshot} precheck={precheck} connected={connected} /> },
           { label: "Journal", content: journal },
+          { label: "Aide", content: <DocumentationTab /> },
         ]}
       />
     </div>

@@ -51,6 +51,20 @@ export function Sparkline({ symbol, points, strike }: { symbol: string; points: 
 
   const hp = hover !== null ? points[hover] : null;
 
+  function fmtTime(ts: number) {
+    const ms = ts > 1e12 ? ts : ts * 1000;
+    try {
+      return new Date(ms).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch {
+      return String(ts);
+    }
+  }
+
+  // tooltip flottant positionne pres du crosshair (interaction.md : hit
+  // targets + tooltip par defaut) -- clamp pour ne jamais deborder du SVG.
+  const tooltipX = hover !== null ? Math.min(Math.max(xs[hover], 34), width - 34) : 0;
+  const tooltipAbove = hover !== null && ys[hover] > height / 2;
+
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
@@ -60,7 +74,7 @@ export function Sparkline({ symbol, points, strike }: { symbol: string; points: 
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
+        className="w-full overflow-visible"
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
       >
@@ -86,6 +100,15 @@ export function Sparkline({ symbol, points, strike }: { symbol: string; points: 
           <>
             <line x1={xs[hover]} y1={pad} x2={xs[hover]} y2={height - pad} stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
             <circle cx={xs[hover]} cy={ys[hover]} r={4} fill="#34d399" stroke="#0a0a0a" strokeWidth={2} />
+            <g transform={`translate(${tooltipX}, ${tooltipAbove ? ys[hover] - 34 : ys[hover] + 10})`}>
+              <rect x={-32} y={0} width={64} height={24} rx={6} fill="#0a0a0d" stroke="rgba(255,255,255,0.12)" />
+              <text x={0} y={10} textAnchor="middle" className="fill-zinc-100" style={{ fontSize: 9, fontWeight: 600 }}>
+                {points[hover].price.toFixed(3)}
+              </text>
+              <text x={0} y={20} textAnchor="middle" className="fill-zinc-500" style={{ fontSize: 7.5 }}>
+                {fmtTime(points[hover].ts)}
+              </text>
+            </g>
           </>
         )}
       </svg>

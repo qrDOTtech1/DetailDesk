@@ -95,6 +95,21 @@ export async function resetKillswitch() {
   revalidatePath("/admin/mmtrade");
 }
 
+export async function resetMarketMakerKill() {
+  await requirePlatformAdmin();
+  await callBot("/api/marketmaker/reset-kill", { method: "POST" });
+  revalidatePath("/admin/mmtrade");
+}
+
+// RAZ (remise a zero des compteurs/stats internes -- ne touche jamais aux
+// fonds reels ni au mode de trading). Bouton volontairement isole dans la
+// zone danger de l'onglet Strategies, jamais dans la vue d'ensemble.
+export async function razCounters() {
+  await requirePlatformAdmin();
+  await callBot("/api/raz", { method: "POST" });
+  revalidatePath("/admin/mmtrade");
+}
+
 export async function setFloor(formData: FormData) {
   await requirePlatformAdmin();
   // le bot accepte 0 explicitement (voir set_floor : "if not (0 <= v <= 100000)")

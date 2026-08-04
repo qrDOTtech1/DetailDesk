@@ -28,6 +28,10 @@ export function HistoriqueTab({ symbols }: { symbols: string[] }) {
   const [symbol, setSymbol] = useState("");
   const [mode, setMode] = useState("");
   const [win, setWin] = useState("");
+  const [side, setSide] = useState("");
+  const [strat, setStrat] = useState("");
+  const [minPnl, setMinPnl] = useState("");
+  const [maxPnl, setMaxPnl] = useState("");
   const [q, setQ] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -35,13 +39,22 @@ export function HistoriqueTab({ symbols }: { symbols: string[] }) {
   const [sortDir, setSortDir] = useState("desc");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Filtres avances (Steven 04/08, "dash massif + complet") : side/strat/
+  // min_pnl/max_pnl sont deja supportes par _filter_sort_trades() cote bot
+  // mais n'etaient jamais exposes dans l'UI -- champs realises pour de vrai,
+  // pas des placeholders.
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), per_page: "25", sort_by: sortBy, sort_dir: sortDir });
     if (symbol) params.set("symbol", symbol);
     if (mode) params.set("mode", mode);
     if (win) params.set("win", win);
+    if (side) params.set("side", side);
+    if (strat) params.set("strat", strat);
+    if (minPnl) params.set("min_pnl", minPnl);
+    if (maxPnl) params.set("max_pnl", maxPnl);
     if (q) params.set("q", q);
     if (fromDate) params.set("from_date", fromDate);
     if (toDate) params.set("to_date", toDate);
@@ -52,16 +65,22 @@ export function HistoriqueTab({ symbols }: { symbols: string[] }) {
         .finally(() => setLoading(false));
     }, q ? 300 : 0); // debounce sur la recherche texte, pas sur les autres filtres
     return () => clearTimeout(t);
-  }, [page, symbol, mode, win, q, fromDate, toDate, sortBy, sortDir]);
+  }, [page, symbol, mode, win, side, strat, minPnl, maxPnl, q, fromDate, toDate, sortBy, sortDir]);
 
   const stats = data?.stats;
   const exportParams = new URLSearchParams({ format: "csv" });
   if (symbol) exportParams.set("symbol", symbol);
   if (mode) exportParams.set("mode", mode);
   if (win) exportParams.set("win", win);
+  if (side) exportParams.set("side", side);
+  if (strat) exportParams.set("strat", strat);
+  if (minPnl) exportParams.set("min_pnl", minPnl);
+  if (maxPnl) exportParams.set("max_pnl", maxPnl);
   if (q) exportParams.set("q", q);
   if (fromDate) exportParams.set("from_date", fromDate);
   if (toDate) exportParams.set("to_date", toDate);
+
+  const hasActiveFilters = !!(fromDate || toDate || q || symbol || mode || win || side || strat || minPnl || maxPnl);
 
   return (
     <div className="space-y-4">
@@ -104,9 +123,29 @@ export function HistoriqueTab({ symbols }: { symbols: string[] }) {
           <option value="desc">Descendant</option>
           <option value="asc">Ascendant</option>
         </select>
-        {(fromDate || toDate || q || symbol || mode || win) && (
+        <button
+          onClick={() => setShowAdvanced((v) => !v)}
+          className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+            showAdvanced ? "bg-white/15 text-zinc-100" : "bg-white/[0.03] text-zinc-500 hover:bg-white/8"
+          }`}
+        >
+          Filtres avances {showAdvanced ? "▾" : "▸"}
+        </button>
+        {hasActiveFilters && (
           <button
-            onClick={() => { setQ(""); setFromDate(""); setToDate(""); setSymbol(""); setMode(""); setWin(""); setPage(1); }}
+            onClick={() => {
+              setQ("");
+              setFromDate("");
+              setToDate("");
+              setSymbol("");
+              setMode("");
+              setWin("");
+              setSide("");
+              setStrat("");
+              setMinPnl("");
+              setMaxPnl("");
+              setPage(1);
+            }}
             className="rounded-full bg-white/5 px-3 py-1 text-[11px] text-zinc-400 hover:bg-white/10"
           >
             Reinitialiser
@@ -121,6 +160,58 @@ export function HistoriqueTab({ symbols }: { symbols: string[] }) {
           </a>
         )}
       </div>
+
+      {showAdvanced && (
+        <Card>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
+              Sens
+              <select
+                value={side}
+                onChange={(e) => { setSide(e.target.value); setPage(1); }}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-200"
+              >
+                <option value="">Up + Down</option>
+                <option value="up">Up seulement</option>
+                <option value="down">Down seulement</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
+              Strategie
+              <input
+                value={strat}
+                onChange={(e) => { setStrat(e.target.value); setPage(1); }}
+                placeholder="ex. risk_free, opportunity..."
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
+              PnL minimum ($)
+              <input
+                type="number"
+                step="0.01"
+                value={minPnl}
+                onChange={(e) => { setMinPnl(e.target.value); setPage(1); }}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-100"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] text-zinc-500">
+              PnL maximum ($)
+              <input
+                type="number"
+                step="0.01"
+                value={maxPnl}
+                onChange={(e) => { setMaxPnl(e.target.value); setPage(1); }}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-100"
+              />
+            </label>
+          </div>
+          <div className="mt-2 text-[10.5px] text-zinc-600">
+            Ces 4 filtres etaient deja supportes cote bot (_filter_sort_trades) mais jamais exposes dans
+            l&apos;interface avant cette iteration.
+          </div>
+        </Card>
+      )}
 
       {stats && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

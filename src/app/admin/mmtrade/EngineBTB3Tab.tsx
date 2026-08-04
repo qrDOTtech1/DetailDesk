@@ -10,12 +10,48 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 
 const LAYERS = [
-  { key: "market_data", label: "Market data" },
-  { key: "signals", label: "Signal" },
-  { key: "execution", label: "Execution" },
-  { key: "risk", label: "Risk" },
-  { key: "review", label: "Post-trade review" },
-  { key: "benchmark", label: "Benchmark" },
+  {
+    key: "market_data",
+    label: "Market data",
+    file: "market_data.py",
+    desc: "Ingestion WS separee de l'execution (voir ENGINEBTB3_SPEC.txt section 1). Rien d'implemente : pas de connexion, pas de buffer, pas de state cache.",
+    fn: "get_snapshot(symbol) -> retourne un etat vide, ne fait AUCUN appel reseau.",
+  },
+  {
+    key: "signals",
+    label: "Signal",
+    file: "signals.py",
+    desc: "Doit produire action/direction/size/confidence/urgency/expected_edge/expected_slippage/expected_fees (section 2 de la spec). Rien d'implemente.",
+    fn: "evaluate(symbol) -> stub.",
+  },
+  {
+    key: "execution",
+    label: "Execution",
+    file: "execution.py",
+    desc: "Sections 3-4 de la spec. AUCUN chemin de ce module ne doit jamais poster d'ordre reel tant que ACTIVE est False -- verifie explicitement en premiere ligne de toute fonction qui serait ajoutee plus tard.",
+    fn: "garde-fou 'from . import ACTIVE' importe des la premiere ligne du fichier.",
+  },
+  {
+    key: "risk",
+    label: "Risk",
+    file: "risk.py",
+    desc: "Section 10 de la spec. Rien d'implemente -- valeurs par defaut toutes a zero dans config.py, donc toute tentative d'engagement serait de toute facon bloquee en amont.",
+    fn: "check(symbol, size_usd) -> stub.",
+  },
+  {
+    key: "review",
+    label: "Post-trade review",
+    file: "review.py",
+    desc: "Section 11 de la spec. Rien a reviewer tant qu'execution.py ne produit aucun trade.",
+    fn: "record(trade) -> no-op.",
+  },
+  {
+    key: "benchmark",
+    label: "Benchmark",
+    file: "benchmark.py",
+    desc: "Section 12 de la spec. Rien a comparer tant qu'aucun trade paper n'existe.",
+    fn: "summary() -> {trades: 0, implemented: false}.",
+  },
 ];
 
 // ENGINEBTB3 (Steven 04/08) : squelette honnete -- statut PAPER affiche
@@ -65,10 +101,24 @@ export function EngineBTB3Tab() {
               <span className="text-sm font-medium text-zinc-200">{l.label}</span>
               <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-zinc-500 ring-1 ring-white/10">stub</span>
             </div>
-            <div className="mt-2 text-[11px] text-zinc-600">Non implemente</div>
+            <div className="mt-1 font-mono text-[10px] text-zinc-600">enginebtb3/{l.file}</div>
+            <div className="mt-2 text-[11px] leading-relaxed text-zinc-500">{l.desc}</div>
+            <div className="mt-2 rounded-lg bg-black/20 px-2 py-1.5 font-mono text-[10px] text-zinc-500">{l.fn}</div>
           </Card>
         ))}
       </div>
+
+      <Card>
+        <div className="text-sm font-medium">Feuille de route (non engagee, pour memoire)</div>
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          ENGINEBTB3_SPEC.txt decrit une architecture cible bien plus large que ce squelette (moteur Rust
+          ultra-low-latency, copy-trading/consensus multi-trader, marches meteo court terme). Rien de ce
+          document n&apos;a ete construit au-dela des stubs ci-dessus -- volontairement, apres analyse honnete
+          montrant que le reseau (~330-360ms de RTT vers Polymarket) domine largement la latence totale, rendant
+          un moteur d&apos;execution ultra-optimise disproportionne par rapport au gain reel attendu. Ce module
+          reste un squelette explicite en l&apos;etat, pas une promesse d&apos;implementation a venir.
+        </p>
+      </Card>
 
       <div>
         <div className="mb-2 text-sm font-medium">Marches crypto 5 min</div>
