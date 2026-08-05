@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -43,7 +43,134 @@ function short(w: string) {
   return `${w.slice(0, 8)}...${w.slice(-6)}`;
 }
 
-function DiscoverPanel({ onPick }: { onPick: (wallet: string) => void }) {
+type FollowedWallet = { label: string; added_ts: number };
+type CopyAction = { ts: number; wallet: string; symbol: string; slug: string; side: string; price: number; budget: number };
+
+// Panneau de controle du copy-trading automatique (Steven 05/08). Le
+// mecanisme cote bot est desactive par defaut (COPY_TRADE_ENABLED = False,
+// un drapeau dans le code, PAS seulement un etat modifiable ici) -- ce
+// panneau permet de PREPARER la liste de wallets suivis et de voir l'etat,
+// mais activer effectivement l'execution reste une decision volontaire
+// prise directement dans le code, pas juste un clic sur ce toggle.
+function CopyTradePanel({ pendingWallet }: { pendingWallet: string | null }) {
+  const [status, setStatus] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    fetch("/admin/mmtrade/copy-trade", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => (d?.error ? setError(d.error) : setStatus(d)))
+      .catch((e) => setError(String(e)));
+  }
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  function act(action: string, extra: Record<string, unknown> = {}) {
+    setBusy(true);
+    fetch("/admin/mmtrade/copy-trade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...extra }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.error) setError(d.error);
+        else load();
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setBusy(false));
+  }
+
+  const wallets: Record<string, FollowedWallet> = status?.wallets ?? {};
+  const recent: CopyAction[] = status?.recent ?? [];
+  const walletEntries = Object.entries(wallets);
+
+  return (
+    <Card>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-medium text-zinc-300">Copy-trading automatique</div>
+        {status && (
+          <button
+            onClick={() => act("enabled", { enabled: !status.enabled })}
+            disabled={busy}
+            className={`rounded-full px-3 py-1 text-[11px] font-medium ring-1 transition disabled:opacity-50 ${
+              status.enabled
+                ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30 hover:bg-emerald-500/25"
+                : "bg-white/[0.03] text-zinc-500 ring-white/8 hover:bg-white/8"
+            }`}
+          >
+            {status.enabled ? "Actif" : "Inactif"} -- cliquer pour {status.enabled ? "desactiver" : "activer"}
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[10.5px] leading-relaxed text-amber-300">
+        Ce toggle controle l&apos;etat, mais l&apos;execution reste bloquee par un second verrou dans le code
+        (COPY_TRADE_ENABLED) tant qu&apos;il n&apos;a pas ete leve volontairement -- l&apos;edge d&apos;un trader source est
+        mesurable, celui du mecanisme de copie (latence de detection) ne l&apos;est pas encore.
+      </div>
+
+      {error && <div className="mt-2 text-xs text-red-300">{error}</div>}
+
+      {pendingWallet && !wallets[pendingWallet] && (
+        <div className="mt-3 flex items-center justify-between rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2">
+          <span className="text-[11px] text-sky-300">Suivre {short(pendingWallet)} ?</span>
+          <button
+            onClick={() => act("follow", { wallet: pendingWallet, label: short(pendingWallet) })}
+            disabled={busy || walletEntries.length >= (status?.max_wallets ?? 5)}
+            className="rounded-full bg-sky-500/20 px-3 py-1 text-[10.5px] font-medium text-sky-200 hover:bg-sky-500/30 disabled:opacity-50"
+          >
+            Suivre
+          </button>
+        </div>
+      )}
+
+      <div className="mt-3 space-y-1.5">
+        {walletEntries.length === 0 ? (
+          <div className="text-[11px] text-zinc-500">Aucun wallet suivi pour l&apos;instant.</div>
+        ) : (
+          walletEntries.map(([w, info]) => (
+            <div key={w} className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-1.5">
+              <span className="font-mono text-[10.5px] text-zinc-400">
+                {short(w)} <span className="text-zinc-600">({info.label})</span>
+              </span>
+              <button
+                onClick={() => act("unfollow", { wallet: w })}
+                disabled={busy}
+                className="text-[10.5px] text-red-400/80 hover:text-red-300 disabled:opacity-50"
+              >
+                retirer
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {recent.length > 0 && (
+        <div className="mt-3 border-t border-white/5 pt-2">
+          <div className="mb-1.5 text-[10px] uppercase tracking-wide text-zinc-500">Dernieres copies executees</div>
+          <div className="space-y-1">
+            {[...recent].reverse().slice(0, 10).map((a, i) => (
+              <div key={i} className="flex items-center justify-between text-[10.5px] text-zinc-400">
+                <span>
+                  {a.symbol} {a.side} @ {a.price.toFixed(3)} ({a.budget.toFixed(2)}$)
+                </span>
+                <span className="text-zinc-600">{short(a.wallet)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function DiscoverPanel({ onPick, onFollow }: { onPick: (wallet: string) => void; onFollow: (wallet: string) => void }) {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,12 +243,20 @@ function DiscoverPanel({ onPick }: { onPick: (wallet: string) => void }) {
                       <td className="py-1.5 pr-3 tabular-nums text-zinc-400">{c.total_cost_usd}$</td>
                       <td className="py-1.5 pr-3 tabular-nums text-zinc-400">{c.days_active}j</td>
                       <td className="py-1.5 text-right">
-                        <button
-                          onClick={() => onPick(c.wallet)}
-                          className="rounded-full bg-sky-500/15 px-2.5 py-1 text-[10.5px] font-medium text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25"
-                        >
-                          Analyser
-                        </button>
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => onPick(c.wallet)}
+                            className="rounded-full bg-sky-500/15 px-2.5 py-1 text-[10.5px] font-medium text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25"
+                          >
+                            Analyser
+                          </button>
+                          <button
+                            onClick={() => onFollow(c.wallet)}
+                            className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10.5px] font-medium text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25"
+                          >
+                            Suivre
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -151,6 +286,7 @@ export function CopyAnalysisTab() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingWallet, setPendingWallet] = useState<string | null>(null);
 
   function analyze(addr?: string) {
     const w = (addr ?? wallet).trim();
@@ -181,7 +317,9 @@ export function CopyAnalysisTab() {
 
   return (
     <div className="space-y-4">
-      <DiscoverPanel onPick={(w) => analyze(w)} />
+      <DiscoverPanel onPick={(w) => analyze(w)} onFollow={(w) => setPendingWallet(w)} />
+
+      <CopyTradePanel pendingWallet={pendingWallet} />
 
       <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-sky-300">
         Ou colle directement une adresse trouvee ailleurs (profil Polymarket d&apos;un trader que tu observes). Lecture
@@ -202,6 +340,13 @@ export function CopyAnalysisTab() {
           className="rounded-full bg-sky-500/15 px-4 py-2 text-[11px] font-medium text-sky-300 ring-1 ring-sky-500/30 transition hover:bg-sky-500/25 disabled:opacity-50"
         >
           {loading ? "Analyse..." : "Analyser"}
+        </button>
+        <button
+          onClick={() => setPendingWallet(wallet.trim() || null)}
+          disabled={!/^0x[0-9a-fA-F]{40}$/.test(wallet.trim())}
+          className="rounded-full bg-emerald-500/15 px-4 py-2 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25 disabled:opacity-50"
+        >
+          Suivre ce wallet
         </button>
       </div>
 
