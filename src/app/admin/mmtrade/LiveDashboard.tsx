@@ -9,6 +9,7 @@ import { EngineBTB3Tab } from "./EngineBTB3Tab";
 import { PrevisionsTab } from "./PrevisionsTab";
 import { RealHistoryTab } from "./RealHistoryTab";
 import { HistorySummaryTab } from "./HistorySummaryTab";
+import { ArbQualityTab } from "./ArbQualityTab";
 import { StrategiesTab } from "./StrategiesTab";
 import { SystemTab } from "./SystemTab";
 import { WatchTab } from "./WatchTab";
@@ -307,6 +308,7 @@ export function LiveDashboard({
           { label: "Historique", content: <HistoriqueTab symbols={symbols} /> },
           { label: "Historique reel (on-chain)", content: <RealHistoryTab /> },
           { label: "Resume multi-heures", content: <HistorySummaryTab /> },
+          { label: "Qualite des arbs", content: <ArbQualityTab /> },
           { label: "Latence", content: <LatenceTab /> },
           { label: "Risque (SL/TP)", content: <RiskTab /> },
           { label: "Strategies", content: <StrategiesTab snapshot={snapshot} /> },
