@@ -43,15 +43,16 @@ function short(w: string) {
   return `${w.slice(0, 8)}...${w.slice(-6)}`;
 }
 
-type FollowedWallet = { label: string; added_ts: number };
+type FollowedWallet = { label: string; added_ts: number; auto?: boolean };
 type CopyAction = { ts: number; wallet: string; symbol: string; slug: string; side: string; price: number; budget: number };
+type WatchlistEntry = { wallet: string; score?: number; reasons: string[] };
 
-// Panneau de controle du copy-trading automatique (Steven 05/08). Le
-// mecanisme cote bot est desactive par defaut (COPY_TRADE_ENABLED = False,
-// un drapeau dans le code, PAS seulement un etat modifiable ici) -- ce
-// panneau permet de PREPARER la liste de wallets suivis et de voir l'etat,
-// mais activer effectivement l'execution reste une decision volontaire
-// prise directement dans le code, pas juste un clic sur ce toggle.
+// Panneau de controle du copy-trading automatique (Steven 05/08, puis
+// "selection doit etre automatique... faut aussi identifier ceux a ne pas
+// suivre"). Le toggle general reste une decision manuelle, mais le CHOIX
+// des wallets est desormais automatique cote bot (_copy_autoselect,
+// section 14 du spec ENGINEBTB3) : ce panneau affiche pourquoi chaque
+// wallet est suivi ou ecarte, en transparence -- pas une boite noire.
 function CopyTradePanel({ pendingWallet }: { pendingWallet: string | null }) {
   const [status, setStatus] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +90,10 @@ function CopyTradePanel({ pendingWallet }: { pendingWallet: string | null }) {
   const wallets: Record<string, FollowedWallet> = status?.wallets ?? {};
   const recent: CopyAction[] = status?.recent ?? [];
   const walletEntries = Object.entries(wallets);
+  const watchlist = status?.watchlist;
+  const eligible: WatchlistEntry[] = watchlist?.eligible ?? [];
+  const excluded: WatchlistEntry[] = watchlist?.excluded ?? [];
+  const [showExcluded, setShowExcluded] = useState(false);
 
   return (
     <Card>
@@ -109,10 +114,10 @@ function CopyTradePanel({ pendingWallet }: { pendingWallet: string | null }) {
         )}
       </div>
 
-      <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[10.5px] leading-relaxed text-amber-300">
-        Ce toggle controle l&apos;etat, mais l&apos;execution reste bloquee par un second verrou dans le code
-        (COPY_TRADE_ENABLED) tant qu&apos;il n&apos;a pas ete leve volontairement -- l&apos;edge d&apos;un trader source est
-        mesurable, celui du mecanisme de copie (latence de detection) ne l&apos;est pas encore.
+      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2 text-[10.5px] leading-relaxed text-emerald-300">
+        Selection automatique active{status?.autoselect_enabled ? "" : " (desactivee cote bot)"} : le bot rescanne et
+        reevalue les wallets toutes les 30min, suit les meilleurs eligibles, retire ceux dont l&apos;edge se degrade.
+        Tu peux aussi forcer un ajout/retrait manuel ci-dessous.
       </div>
 
       {error && <div className="mt-2 text-xs text-red-300">{error}</div>}
@@ -131,13 +136,16 @@ function CopyTradePanel({ pendingWallet }: { pendingWallet: string | null }) {
       )}
 
       <div className="mt-3 space-y-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-zinc-500">
+          Wallets suivis ({walletEntries.length}/{status?.max_wallets ?? 5})
+        </div>
         {walletEntries.length === 0 ? (
-          <div className="text-[11px] text-zinc-500">Aucun wallet suivi pour l&apos;instant.</div>
+          <div className="text-[11px] text-zinc-500">Aucun wallet suivi pour l&apos;instant (attend le premier scan automatique).</div>
         ) : (
           walletEntries.map(([w, info]) => (
             <div key={w} className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-1.5">
               <span className="font-mono text-[10.5px] text-zinc-400">
-                {short(w)} <span className="text-zinc-600">({info.label})</span>
+                {short(w)} <span className="text-zinc-600">({info.label}{info.auto ? " -- auto" : ""})</span>
               </span>
               <button
                 onClick={() => act("unfollow", { wallet: w })}
@@ -150,6 +158,38 @@ function CopyTradePanel({ pendingWallet }: { pendingWallet: string | null }) {
           ))
         )}
       </div>
+
+      {watchlist && (
+        <div className="mt-3 border-t border-white/5 pt-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+              Dernier scan : {eligible.length} eligibles, {excluded.length} exclus
+            </span>
+            <button onClick={() => setShowExcluded((v) => !v)} className="text-[10.5px] text-zinc-500 hover:text-zinc-300">
+              {showExcluded ? "masquer les exclus" : "voir les exclus"}
+            </button>
+          </div>
+          <div className="space-y-1">
+            {eligible.slice(0, 8).map((e) => (
+              <div key={e.wallet} className="text-[10.5px] text-zinc-400">
+                <span className="font-mono text-emerald-400/90">{short(e.wallet)}</span>{" "}
+                <span className="text-zinc-600">score {e.score} -- {e.reasons[0]}</span>
+              </div>
+            ))}
+          </div>
+          {showExcluded && (
+            <div className="mt-2 space-y-1">
+              {excluded.slice(0, 12).map((e) => (
+                <div key={e.wallet} className="text-[10.5px] text-zinc-500">
+                  <span className="font-mono text-red-400/80">{short(e.wallet)}</span>{" "}
+                  <span className="text-zinc-600">{e.reasons.join(" ; ")}</span>
+                </div>
+              ))}
+              {excluded.length === 0 && <div className="text-[10.5px] text-zinc-600">Aucun exclu ce scan.</div>}
+            </div>
+          )}
+        </div>
+      )}
 
       {recent.length > 0 && (
         <div className="mt-3 border-t border-white/5 pt-2">
