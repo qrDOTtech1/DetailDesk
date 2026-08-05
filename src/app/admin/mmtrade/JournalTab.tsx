@@ -68,11 +68,47 @@ export function JournalTab({ logs, connected }: { logs: string[]; connected: boo
     return list;
   }, [classified, levelFilter, search]);
 
+  // AUTO-PAUSE INTELLIGENT (Steven 05/08, "je suis automatiquement ramene a
+  // la derniere ligne sans qu'on me laisse le temps de lire, meme quand
+  // j'essaie de copier") : avant, l'auto-scroll ignorait totalement ce que
+  // l'utilisateur etait en train de faire -- chaque nouvelle ligne poussee
+  // par le flux SSE arrachait la vue vers le bas, y compris en pleine
+  // selection de texte. Desormais : des que l'utilisateur scrolle
+  // manuellement loin du bas, ou commence a cliquer/selectionner dans le
+  // journal, l'auto-scroll se coupe tout seul -- pas besoin de penser a
+  // decocher la case avant de lire. Un clic sur "reprendre" (ou re-cocher
+  // la case) le relance.
+  const NEAR_BOTTOM_PX = 48;
+  const isNearBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  };
+
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [filtered, autoScroll]);
+
+  function handleManualScroll() {
+    if (autoScroll && !isNearBottom()) {
+      setAutoScroll(false);
+    }
+  }
+
+  function handleSelectStart() {
+    // coupe immediatement, sans attendre l'evenement scroll (qui peut ne
+    // jamais se declencher si on selectionne sans bouger la molette).
+    if (autoScroll) setAutoScroll(false);
+  }
+
+  function resumeAutoScroll() {
+    setAutoScroll(true);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }
 
   function highlight(line: string) {
     if (!search.trim()) return line;
@@ -125,9 +161,22 @@ export function JournalTab({ logs, connected }: { logs: string[]; connected: boo
             {filtered.length} / {logs.length} lignes
           </span>
           <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-            <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} className="accent-emerald-500" />
+            <input
+              type="checkbox"
+              checked={autoScroll}
+              onChange={(e) => (e.target.checked ? resumeAutoScroll() : setAutoScroll(false))}
+              className="accent-emerald-500"
+            />
             auto-scroll
           </label>
+          {!autoScroll && (
+            <button
+              onClick={resumeAutoScroll}
+              className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
+            >
+              ⏸ en pause -- reprendre
+            </button>
+          )}
           <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <input type="checkbox" checked={wrapLines} onChange={(e) => setWrapLines(e.target.checked)} className="accent-emerald-500" />
             retour a la ligne
@@ -145,6 +194,9 @@ export function JournalTab({ logs, connected }: { logs: string[]; connected: boo
         </div>
         <div
           ref={scrollRef}
+          onScroll={handleManualScroll}
+          onMouseDown={handleSelectStart}
+          onTouchStart={handleSelectStart}
           className="max-h-[36rem] select-text overflow-y-auto rounded-lg bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed"
         >
           {filtered.map((entry, i) => (
