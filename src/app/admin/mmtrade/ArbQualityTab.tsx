@@ -1,5 +1,38 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// NOTIFICATION SONORE GAIN/PERTE (Steven 07/08). Synthetisee via Web Audio,
+// aucun fichier audio a charger. Un son ASCENDANT pour un gain, DESCENDANT
+// pour une perte -- la direction se reconnait sans avoir a regarder l'ecran.
+let _audioCtx: AudioContext | null = null;
+function _ctx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+  if (!Ctor) return null;
+  if (!_audioCtx) _audioCtx = new Ctor();
+  if (_audioCtx.state === "suspended") _audioCtx.resume().catch(() => {});
+  return _audioCtx;
+}
+function playAlert(kind: "gain" | "perte") {
+  const ctx = _ctx();
+  if (!ctx) return;
+  const notes = kind === "gain" ? [523.25, 659.25, 783.99] : [523.25, 415.3, 329.63]; // do-mi-sol / do-la b-mi
+  const step = 0.11;
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const t0 = ctx.currentTime + i * step;
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.16, t0 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + step * 0.95);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + step);
+  });
+}
 
 // QUALITE DES ARBS (Steven 05-06/08).
 //
@@ -431,6 +464,36 @@ export function ArbQualityTab() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"all" | "preopen" | "problems">("all");
+  const [muted, setMuted] = useState(true); // demarre muet -- l'audio du navigateur
+  // exige un geste utilisateur avant de pouvoir jouer un son de toute facon.
+
+  // SUIVI DES EVENEMENTS DEJA NOTIFIES (gain/perte) : sans ca, chaque
+  // rafraichissement de page rejouerait un son pour les 60 dernieres entrees
+  // du journal d'un coup. On memorise ce qu'on a deja vu, et seul ce qui
+  // arrive APRES le premier chargement declenche un son.
+  const seenRef = useRef<Set<string>>(new Set());
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      setMuted(localStorage.getItem("mmtrade_sound_muted") !== "0");
+    } catch {}
+  }, []);
+
+  function toggleMuted() {
+    setMuted((m) => {
+      const next = !m;
+      try {
+        localStorage.setItem("mmtrade_sound_muted", next ? "1" : "0");
+      } catch {}
+      if (!next) {
+        // deverrouille l'audio sur ce geste utilisateur (Chrome/Safari
+        // bloquent la lecture sans interaction prealable)
+        _ctx();
+      }
+      return next;
+    });
+  }
 
   function load() {
     setLoading(true);
@@ -452,6 +515,29 @@ export function ArbQualityTab() {
     const id = setInterval(load, 20000);
     return () => clearInterval(id);
   }, []);
+
+  // DECLENCHEMENT DU SON : sur chaque nouvelle donnee, on regarde le journal
+  // maker-ouvert (BTC/ETH, le mecanisme actif) pour des entrees jamais vues
+  // avec un net non nul, et on joue le son correspondant.
+  useEffect(() => {
+    const recent: any[] = data?.preopen?.maker_open?.recent ?? [];
+    if (!recent.length) return;
+    if (!initializedRef.current) {
+      // premier chargement : on memorise tout sans rien jouer
+      recent.forEach((r) => seenRef.current.add(`${r.slug}-${r.ts}`));
+      initializedRef.current = true;
+      return;
+    }
+    const nouveaux = recent.filter((r) => !seenRef.current.has(`${r.slug}-${r.ts}`));
+    nouveaux.forEach((r) => seenRef.current.add(`${r.slug}-${r.ts}`));
+    if (muted || !nouveaux.length) return;
+    // du plus ancien au plus recent, pour que l'ordre des sons suive l'ordre reel
+    [...nouveaux].reverse().forEach((r, i) => {
+      const net = typeof r.net === "number" ? r.net : 0;
+      if (Math.abs(net) < 0.001) return;
+      setTimeout(() => playAlert(net > 0 ? "gain" : "perte"), i * 260);
+    });
+  }, [data, muted]);
 
   const s = data?.summary;
   const pairs: Pair[] = data?.pairs ?? [];
@@ -483,8 +569,23 @@ export function ArbQualityTab() {
           </button>
         ))}
         <button
+          onClick={toggleMuted}
+          title={
+            muted
+              ? "Sons desactives -- cliquer pour activer les alertes gain/perte"
+              : "Sons actives -- un carillon par gain ou perte reelle sur BTC/ETH"
+          }
+          className={`ml-auto rounded-full px-3 py-1.5 text-[11px] font-medium transition ${
+            muted
+              ? "bg-white/[0.03] text-zinc-500 ring-1 ring-white/8 hover:bg-white/[0.06]"
+              : "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"
+          }`}
+        >
+          {muted ? "🔇 Sons" : "🔊 Sons"}
+        </button>
+        <button
           onClick={load}
-          className="ml-auto rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20"
+          className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/20"
         >
           Rafraichir
         </button>
