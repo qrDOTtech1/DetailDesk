@@ -10,6 +10,7 @@ import { PrevisionsTab } from "./PrevisionsTab";
 import { RealHistoryTab } from "./RealHistoryTab";
 import { HistorySummaryTab } from "./HistorySummaryTab";
 import { ArbQualityTab } from "./ArbQualityTab";
+import { MSFTab } from "./MSFTab";
 import { CopyAnalysisTab } from "./CopyAnalysisTab";
 import { StrategiesTab } from "./StrategiesTab";
 import { SystemTab } from "./SystemTab";
@@ -310,6 +311,7 @@ export function LiveDashboard({
           { label: "Historique reel (on-chain)", content: <RealHistoryTab /> },
           { label: "Resume multi-heures", content: <HistorySummaryTab /> },
           { label: "Qualite des arbs", content: <ArbQualityTab /> },
+          { label: "MSF", content: <MSFTab /> },
           { label: "Analyse copy", content: <CopyAnalysisTab /> },
           { label: "Latence", content: <LatenceTab /> },
           { label: "Risque (SL/TP)", content: <RiskTab /> },

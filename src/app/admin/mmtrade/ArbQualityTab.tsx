@@ -48,7 +48,7 @@ function playAlert(kind: "gain" | "perte") {
 // d'ORDER ni de CANCEL) -- poser puis annuler ne coute rien. Le taux de
 // reussite doit donc se lire dans le journal des tentatives, pas dans l'argent.
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
       className={`rounded-2xl border border-white/8 bg-white/[0.03] p-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] backdrop-blur-sm ${className}`}
@@ -58,7 +58,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   );
 }
 
-function StatTile({
+export function StatTile({
   label,
   value,
   tone,
@@ -87,7 +87,7 @@ function StatTile({
 }
 
 /** Barre de repartition facon releve bancaire : une seule ligne, part par part. */
-function Bar({ parts }: { parts: { label: string; n: number; className: string }[] }) {
+export function Bar({ parts }: { parts: { label: string; n: number; className: string }[] }) {
   const total = parts.reduce((a, p) => a + p.n, 0);
   if (!total) return null;
   return (
@@ -144,7 +144,7 @@ type Attempt = {
   tick?: number | null;
 };
 
-function fmtTime(ts: number | null | undefined) {
+export function fmtTime(ts: number | null | undefined) {
   if (!ts) return "-";
   try {
     return new Date(ts * 1000).toLocaleString("fr-FR", {
@@ -551,6 +551,15 @@ export function ArbQualityTab() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-100">Qualite des arbs</h2>
+          <p className="mt-0.5 text-[11px] text-zinc-500">
+            Le PnL seul ne dit pas si une paire etait un vrai arb garanti -- voir plus bas.
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-1.5">
         {TABS.map((t) => (
           <button
